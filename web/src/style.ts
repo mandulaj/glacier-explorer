@@ -13,9 +13,9 @@ export const GROUP_LAYERS: Record<LabelGroup, string[]> = {
   water: ["water", "rivers"],
 };
 
-const MAPTERHORN = "https://tiles.mapterhorn.com/tilejson.json";
 const DEM_ATTRIBUTION =
-  '<a href="https://mapterhorn.com/attribution/" target="_blank">Terrain sources: swisstopo, BEV, IGN, LDBV and others</a>';
+  '<a href="https://mapterhorn.com/attribution/" target="_blank">© Mapterhorn</a> (swisstopo, BEV, IGN, LDBV and others)';
+const SEA_ATTRIBUTION = '<a href="https://emodnet.ec.europa.eu/en/bathymetry" target="_blank">Seabed: EMODnet Bathymetry</a>';
 
 const PAINT = { shadow: "#3d3a36", highlight: "#ffffff", water: "#a9bfd0" };
 
@@ -26,15 +26,20 @@ export function backgroundColor(shading: number): string {
   return `rgb(${mix(0xf4, 0xd9)}, ${mix(0xf4, 0xd5)}, ${mix(0xf2, 0xcb)})`;
 }
 
-export function buildStyle(): StyleSpecification {
+/**
+ * @param demTiles tile URL template for the elevation tiles (Mapterhorn, or our seabed-merging protocol)
+ * @param hasSeabed whether those tiles include the seabed
+ */
+export function buildStyle(demTiles: string, hasSeabed: boolean): StyleSpecification {
+  const dem = { type: "raster-dem" as const, tiles: [demTiles], tileSize: 512, encoding: "terrarium" as const };
   const p = { ...PAINT, background: backgroundColor(0.55) };
   return {
     version: 8,
     glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
     sources: {
       // separate sources for terrain mesh and hillshade, as recommended by MapLibre
-      [TERRAIN_SOURCE]: { type: "raster-dem", url: MAPTERHORN, attribution: DEM_ATTRIBUTION },
-      hillshade: { type: "raster-dem", url: MAPTERHORN },
+      [TERRAIN_SOURCE]: { ...dem, attribution: hasSeabed ? `${DEM_ATTRIBUTION} | ${SEA_ATTRIBUTION}` : DEM_ATTRIBUTION },
+      hillshade: dem,
       osm: {
         type: "vector",
         url: "https://tiles.openfreemap.org/planet",

@@ -1,5 +1,5 @@
 import type { TimeSeries } from "./data";
-import { EVENTS, periodAt, PERIODS, type TimelineEvent } from "./timeline";
+import { EVENTS, periodAt, PERIODS, type Period, type TimelineEvent } from "./timeline";
 
 /** Bottom time slider: old (left) to present (right), ice-volume curve as backdrop. */
 export class TimeBar {
@@ -11,7 +11,9 @@ export class TimeBar {
   private period = document.getElementById("age-period")!;
   private tip = document.getElementById("event-tip")!;
   private markers: { event: TimelineEvent; button: HTMLButtonElement }[] = [];
-  private hovered: TimelineEvent | null = null;
+  /** event or period under the pointer (or keyboard focus); wins over the event the slider is passing */
+  private hovered: TimelineEvent | Period | null = null;
+  private hideTimer = 0;
   private canvas = document.getElementById("curve") as HTMLCanvasElement;
   private playing = false;
   private last = 0;
@@ -84,6 +86,29 @@ export class TimeBar {
   /** Period bands along the top and clickable event markers. */
   private buildTimeline() {
     const left = (age: number) => (1 - Math.min(age, this.maxAge) / this.maxAge) * 100;
+
+    // the bubble holds a link, so it must stay open while the pointer travels to it
+    const hover = (item: TimelineEvent | Period | null) => () => {
+      clearTimeout(this.hideTimer);
+      if (item) {
+        this.hovered = item;
+        this.updateTip();
+      } else {
+        this.hideTimer = window.setTimeout(() => {
+          this.hovered = null;
+          this.updateTip();
+        }, 300);
+      }
+    };
+    const bind = (el: HTMLElement, item: TimelineEvent | Period) => {
+      el.addEventListener("pointerenter", hover(item));
+      el.addEventListener("pointerleave", hover(null));
+      el.addEventListener("focus", hover(item));
+      el.addEventListener("blur", hover(null));
+    };
+    this.tip.addEventListener("pointerenter", () => clearTimeout(this.hideTimer));
+    this.tip.addEventListener("pointerleave", hover(null));
+
     const periods = document.getElementById("periods")!;
     for (const p of PERIODS) {
       const span = document.createElement("span");
@@ -92,7 +117,7 @@ export class TimeBar {
       span.style.width = `${width}%`;
       span.style.background = p.color;
       span.textContent = width > 22 ? p.name : width > 4 ? p.short : "";
-      span.title = `${p.name}: ${p.from} to ${p.to} ka`;
+      bind(span, p);
       periods.append(span);
     }
 
@@ -103,20 +128,13 @@ export class TimeBar {
       button.style.left = `${left(event.age)}%`;
       button.setAttribute("aria-label", `${event.title}, ${event.age} thousand years ago`);
       button.addEventListener("click", () => (this.age = event.age));
-      const hover = (on: boolean) => () => {
-        this.hovered = on ? event : null;
-        this.updateTip();
-      };
-      button.addEventListener("pointerenter", hover(true));
-      button.addEventListener("pointerleave", hover(false));
-      button.addEventListener("focus", hover(true));
-      button.addEventListener("blur", hover(false));
+      bind(button, event);
       events.append(button);
       this.markers.push({ event, button });
     }
   }
 
-  /** Show the hovered event, or the one the slider is passing. */
+  /** Show the hovered event or period, or the event the slider is passing. */
   private updateTip() {
     const age = this.age;
     const near = this.markers.reduce<TimelineEvent | null>(
@@ -127,15 +145,33 @@ export class TimeBar {
     for (const m of this.markers) m.button.classList.toggle("active", m.event === shown);
     this.tip.hidden = !shown;
     if (!shown) return;
+
+    const isEvent = "age" in shown;
     const title = document.createElement("strong");
-    title.textContent = shown.title;
+    title.textContent = isEvent ? shown.title : shown.name;
     const when = document.createElement("em");
-    when.textContent = `about ${(shown.age * 1000).toLocaleString("en")} years ago`;
-    this.tip.replaceChildren(title, when, document.createElement("br"), shown.detail);
+    const years = (ka: number) => (ka * 1000).toLocaleString("en");
+    when.textContent = isEvent ? `about ${years(shown.age)} years ago` : `${years(shown.from)} to ${shown.to === 0 ? "today" : `${years(shown.to)} years ago`}`;
+    const parts: (Node | string)[] = [title, when];
+    if (shown.detail) parts.push(document.createElement("br"), shown.detail);
+    if (shown.sources?.length) {
+      parts.push(document.createElement("br"), shown.sources.length > 1 ? "Sources: " : "Source: ");
+      shown.sources.forEach((source, i) => {
+        const link = document.createElement("a");
+        link.href = source.url;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = source.label;
+        parts.push(...(i ? ["; ", link] : [link]));
+      });
+    }
+    this.tip.replaceChildren(...parts);
+
     // keep the bubble inside the track
     const track = this.tip.parentElement!.clientWidth;
-    const x = (1 - shown.age / this.maxAge) * track;
-    this.tip.style.left = `${Math.min(Math.max(x - 115, 0), Math.max(track - 230, 0))}px`;
+    const centre = isEvent ? shown.age : (Math.min(shown.from, this.maxAge) + shown.to) / 2;
+    const x = (1 - centre / this.maxAge) * track;
+    this.tip.style.left = `${Math.min(Math.max(x - 125, 0), Math.max(track - 250, 0))}px`;
   }
 
   private drawTicks() {

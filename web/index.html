@@ -18,8 +18,13 @@
             Terrain from <a href="https://mapterhorn.com/attribution/" target="_blank" rel="noopener">Mapterhorn</a>
             (swisstopo, BEV, IGN and others); places and borders from OpenStreetMap via OpenFreeMap.
             Turn the shading down to zero for a plain black-and-white map.
+            Seabed from <a href="https://emodnet.ec.europa.eu/en/bathymetry" target="_blank" rel="noopener">EMODnet Bathymetry</a>;
+            the sea follows global mean sea level
+            (<a href="https://doi.org/10.5194/cp-12-1079-2016" target="_blank" rel="noopener">Spratt &amp; Lisiecki 2016</a>),
+            so past shorelines are indicative: local land movement is not included.
           </p>
           <label class="range">Relief shading <input type="range" id="shading" min="0" max="1" step="0.05" value="0.55" /></label>
+          <label><input type="checkbox" id="sea-visible" checked /> Sea, level <output id="sea-level">as today</output></label>
         </fieldset>
         <fieldset>
           <legend>Labels</legend>

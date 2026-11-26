@@ -9,6 +9,8 @@ import { ErosionLayer } from "./erosion";
 import { IceLayer } from "./iceLayer";
 import { FlyControls } from "./fly";
 import { backgroundColor, buildStyle, FIRST_LABEL_LAYER, GROUP_LAYERS, TERRAIN_SOURCE, type LabelGroup } from "./style";
+import { installSeabed } from "./seabed";
+import { SeaLayer, type SeaLevelCurve } from "./seaLayer";
 import { TimeBar } from "./timebar";
 
 const INITIAL_AGE = 24;
@@ -34,14 +36,16 @@ function ageToUrl(age: number) {
 maplibregl.setWorkerUrl(workerUrl);
 
 async function main() {
-  const [manifest, series] = await Promise.all([
+  const [manifest, series, terrain, seaLevel] = await Promise.all([
     fetchJson<Manifest>("manifest.json"),
     fetchJson<TimeSeries>("timeseries.json"),
+    installSeabed(),
+    fetchJson<SeaLevelCurve>("sealevel.json").catch(() => null),
   ]);
 
   const map = new maplibregl.Map({
     container: "map",
-    style: buildStyle(),
+    style: buildStyle(terrain.tiles, terrain.hasSeabed),
     center: [8.75, 46.75],
     zoom: 7.7,
     pitch: 58,
@@ -56,6 +60,8 @@ async function main() {
   map.addControl(new maplibregl.ScaleControl(), "top-right");
 
   const ice = new IceLayer(manifest);
+  const sea = terrain.hasSeabed ? new SeaLayer(seaLevel) : null;
+  const seaReadout = document.getElementById("sea-level")!;
   const maxAge = manifest.frames[0].age;
   let erosion: ErosionLayer | null = null;
   let depositStep = NaN;
@@ -63,6 +69,11 @@ async function main() {
     ageToUrl(age);
     ice.setAge(age);
     erosion?.setAge(age);
+    if (sea) {
+      sea.setAge(age);
+      const level = Math.round(sea.levelAt(age));
+      seaReadout.textContent = level === 0 ? "as today" : `${level > 0 ? "+" : "−"}${Math.abs(level)} m`;
+    }
     // deposits appear once their time has come; refilter only every 100 years
     const step = Math.round(age * 10) / 10;
     if (step !== depositStep && map.getLayer("deposits")) {
@@ -72,6 +83,10 @@ async function main() {
   });
 
   map.on("load", () => {
+    if (sea) {
+      map.addLayer(sea, FIRST_LABEL_LAYER);
+      sea.setAge(timebar.age);
+    }
     map.addLayer(ice, FIRST_LABEL_LAYER);
     ice.setAge(timebar.age);
     if (manifest.erosion) {
@@ -83,12 +98,12 @@ async function main() {
     if (manifest.debris) bindDebris(map, ice, manifest, () => timebar.age);
   });
 
-  bindMenu(map, ice, () => erosion?.invalidate());
+  bindMenu(map, ice, sea, () => erosion?.invalidate());
   // handy for debugging and automated checks
   Object.assign(window, { map, ice, timebar });
 }
 
-function bindMenu(map: maplibregl.Map, ice: IceLayer, redrawTerrain: () => void) {
+function bindMenu(map: maplibregl.Map, ice: IceLayer, sea: SeaLayer | null, redrawTerrain: () => void) {
   const menu = document.getElementById("menu")!;
   const toggle = document.getElementById("menu-toggle")!;
   toggle.addEventListener("click", () => {
@@ -113,6 +128,13 @@ function bindMenu(map: maplibregl.Map, ice: IceLayer, redrawTerrain: () => void)
     map.setPaintProperty("background", "background-color", backgroundColor(value));
     // paint-only changes do not refresh MapLibre's cached terrain tile textures by themselves
     redrawTerrain();
+  });
+
+  const seaBox = document.getElementById("sea-visible") as HTMLInputElement;
+  seaBox.closest("label")!.hidden = !sea;
+  seaBox.addEventListener("change", () => {
+    if (sea) sea.visible = seaBox.checked;
+    map.triggerRepaint();
   });
 
   const contours = document.getElementById("contour-labels") as HTMLInputElement;
@@ -155,6 +177,7 @@ function bindMenu(map: maplibregl.Map, ice: IceLayer, redrawTerrain: () => void)
     const value = Number(exaggeration.value);
     exagOut.textContent = value.toFixed(1);
     ice.exaggeration = value;
+    if (sea) sea.exaggeration = value;
     map.setTerrain({ source: TERRAIN_SOURCE, exaggeration: value });
   });
 }
