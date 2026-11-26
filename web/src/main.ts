@@ -2,6 +2,7 @@ import * as maplibregl from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./app.css";
+import { ContextIce, type ContextData } from "./context";
 import { DEGLACIATION_RANGE, EROSION_RANGE, RAMPS, rampCss, type IceMode } from "./colormaps";
 import { fetchJson, type Manifest, type TimeSeries } from "./data";
 import { loadDebris } from "./debris";
@@ -37,11 +38,12 @@ function ageToUrl(age: number) {
 maplibregl.setWorkerUrl(workerUrl);
 
 async function main() {
-  const [manifest, series, terrain, seaLevel] = await Promise.all([
+  const [manifest, series, terrain, seaLevel, contextData] = await Promise.all([
     fetchJson<Manifest>("manifest.json"),
     fetchJson<TimeSeries>("timeseries.json"),
     installSeabed(),
     fetchJson<SeaLevelCurve>("sealevel.json").catch(() => null),
+    fetchJson<ContextData>("context.json").catch(() => null),
   ]);
 
   const map = new maplibregl.Map({
@@ -52,7 +54,7 @@ async function main() {
     pitch: 58,
     bearing: -12,
     maxPitch: 85,
-    minZoom: 5,
+    minZoom: contextData ? 2.5 : 5,
     maxZoom: 14.5,
     hash: "map",
     attributionControl: { compact: true },
@@ -67,12 +69,22 @@ async function main() {
   /** ground overlays by ice mode */
   const ground: Partial<Record<IceMode, DrapedLayer>> = {};
   let inspector: Inspector | null = null;
+  let context: ContextIce | null = null;
+  const contextBox = document.getElementById("context-ice") as HTMLInputElement;
+  const contextReadout = document.getElementById("context-info")!;
+  contextBox.closest("label")!.hidden = !contextData;
+  const updateContext = (age: number) => {
+    if (!context) return;
+    context.setAge(age, sea ? sea.levelAt(age) : 0);
+    contextReadout.textContent = context.visible ? context.describe() : "";
+  };
   let depositStep = NaN;
   const timebar = new TimeBar(maxAge, series, Math.min(Math.max(ageFromUrl() ?? INITIAL_AGE, 0), maxAge), (age) => {
     ageToUrl(age);
     ice.setAge(age);
     ground.erosion?.setAge(age);
     inspector?.setAge(age);
+    updateContext(age);
     if (sea) {
       sea.setAge(age);
       const level = Math.round(sea.levelAt(age));
@@ -93,6 +105,20 @@ async function main() {
     }
     map.addLayer(ice, FIRST_LABEL_LAYER);
     ice.setAge(timebar.age);
+    if (contextData) {
+      // draped outlines above lakes and rivers, the sheet on the water above the sea but below the Alpine ice
+      context = new ContextIce(map, contextData, "coast", ice.id);
+      const seaBox = document.getElementById("sea-visible") as HTMLInputElement;
+      const exaggeration = document.getElementById("exaggeration") as HTMLInputElement;
+      const apply = () => {
+        context!.visible = contextBox.checked;
+        context!.seaVisible = !!sea && seaBox.checked;
+        context!.exaggeration = Number(exaggeration.value);
+        updateContext(timebar.age);
+      };
+      for (const input of [contextBox, seaBox, exaggeration]) input.addEventListener("input", apply);
+      apply();
+    }
     if (manifest.erosion) {
       ground.erosion = new DrapedLayer(manifest, { id: "erosion", frames: manifest.erosion.frames, encoding: manifest.erosion, ramp: RAMPS.erosion, range: EROSION_RANGE });
     }

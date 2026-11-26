@@ -25,6 +25,8 @@ ground against its bed, and where it carried and dropped rock debris.
 - **Ice-free since**: the ground coloured by its deglaciation age.
 - **Sea level**: the sea follows global mean sea level through time over a real 3D seabed, so the
   shallow northern Adriatic dries out during the glacial maximum (about 130 m lower).
+- **Northern ice sheet**: zoom out and the ice sheet over the British Isles, Scandinavia and the
+  Barents Sea grows and shrinks with the time slider (flat outlines from geological reconstructions).
 - **Labels**: borders, towns, summits with elevation, lakes and rivers.
 
 ### Controls
@@ -44,6 +46,12 @@ ground against its bed, and where it carried and dropped rock debris.
   [doi:10.5281/zenodo.7802275](https://doi.org/10.5281/zenodo.7802275) (CC BY 4.0), run `alpcyc.1km.epic.pp`.
 - **Erosion law**: Koppes et al. (2015), as applied by
   [Seguinot & Delaney (2021)](https://doi.org/10.5194/esurf-9-923-2021).
+- **Ice sheet outside the Alps**: DATED-1 time slices, 38–10 ka, Hughes et al. (2016),
+  [Boreas 45, 1–45](https://doi.org/10.1111/bor.12142); data
+  [doi:10.1594/PANGAEA.848117](https://doi.org/10.1594/PANGAEA.848117) (CC BY 3.0). Before that, one
+  outline per climate stage from Batchelor et al. (2019),
+  [Nature Communications 10, 3713](https://doi.org/10.1038/s41467-019-11601-2); data
+  [osf.io/7jen3](https://osf.io/7jen3/). Outlines only, no thickness, blended between time slices.
 - **Terrain**: [Mapterhorn](https://mapterhorn.com/attribution/) tiles built from open data of
   swisstopo, BEV, IGN, LDBV and others.
 - **Seabed**: [EMODnet Bathymetry](https://emodnet.ec.europa.eu/en/bathymetry) around the Alps and
@@ -86,6 +94,12 @@ uv run --project pipeline pipeline/history.py             # per-place ice histor
 curl -o data/sealevel/spratt2016.txt --create-dirs \
   https://www.ncei.noaa.gov/pub/data/paleo/contributions_by_author/spratt2016/spratt2016.txt
 uv run --project pipeline python -I pipeline/sea.py --sea-level data/sealevel/spratt2016.txt
+
+# optional: outlines of the Eurasian ice sheet around the Alps.
+# Unzip "TimeSlices shapefiles" of doi:10.1594/PANGAEA.848117 into data/context/dated/shp/ and copy
+# the "best_estimate" shapefiles of 45 ka, MIS 4, 5a, 5b, 5c and 5d from https://osf.io/7jen3/
+# into data/context/batchelor/<slice name>/
+uv run --project pipeline python -I pipeline/context.py
 ```
 
 What the pipeline does:

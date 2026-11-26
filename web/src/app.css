@@ -616,3 +616,11 @@ kbd {
 .section-marker {
   cursor: grab;
 }
+
+/* what the northern ice sheet outline shows at the current time */
+#context-info {
+  display: block;
+  margin-left: 1.55em;
+  font-size: 0.82em;
+  opacity: 0.65;
+}
