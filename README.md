@@ -102,6 +102,11 @@ This builds the site and force-pushes it, data frames included, as a single comm
 repository. In the repository settings, set *Pages → Source* to *Deploy from a branch*, branch
 `gh-pages`, folder `/ (root)`.
 
+## Licence
+
+Code: [GPL-3.0](LICENSE). The ice simulation data, terrain tiles and map data keep the licences of
+their sources listed above.
+
 ## Ideas for later
 
 - Aggregated variables (maximum extent, deglaciation age): [zenodo.3604174](https://doi.org/10.5281/zenodo.3604174)

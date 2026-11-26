@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "3D viewer of the Alps through the last glacial cycle: ice extent, flow, erosion and debris transport over 120,000 years",
+  "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "vite",
