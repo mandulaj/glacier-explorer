@@ -70,6 +70,11 @@ export class Inspector {
   /** age (ka) of the last ice at every pixel of the frame grid, from the 100-year output */
   private lastIce: Float32Array | null = null;
   private spread = document.createElement("select");
+  /** flow trace of the open popup: start offsets (metres) are kept so the picture is stable while time moves */
+  private traceOffsets: [number, number][] | null = null;
+  private traceRun = 0;
+  private traceTimer = 0;
+  private traceQueuedAt = 0;
   private age = 0;
 
   // popup parts that change with time
@@ -114,6 +119,7 @@ export class Inspector {
     this.age = age;
     if (this.place && this.popup?.isOpen()) this.updatePopup();
     if (this.section) this.drawSection();
+    if (this.traceOffsets && this.place) this.queueTrace();
   }
 
   // ---------------------------------------------------------------- coordinates
@@ -145,6 +151,7 @@ export class Inspector {
     this.place = place;
     this.ice.setTraces("flow", []);
     this.traceText.textContent = "";
+    this.traceOffsets = null;
 
     const root = document.createElement("div");
     root.className = "inspect";
@@ -158,7 +165,7 @@ export class Inspector {
     const whose = document.createElement("button");
     whose.type = "button";
     whose.textContent = "Whose ice is this?";
-    whose.addEventListener("click", () => this.runTrace());
+    whose.addEventListener("click", () => this.startTrace());
     const cut = document.createElement("button");
     cut.type = "button";
     cut.textContent = "Cross-section from here";
@@ -182,7 +189,7 @@ export class Inspector {
       ] as const) {
         this.spread.add(new Option(text, String(km), km === 5, km === 5));
       }
-      this.spread.addEventListener("change", () => this.runTrace());
+      this.spread.addEventListener("change", () => this.startTrace());
     }
     label.append("Start from ", this.spread);
     options.append(summary, label);
@@ -193,6 +200,7 @@ export class Inspector {
     this.popup = popup;
     popup.on("close", () => {
       if (this.place !== place) return; // a newer popup has taken over
+      this.traceOffsets = null;
       this.ice.setTraces("flow", []);
       this.place = null;
     });
@@ -315,6 +323,30 @@ export class Inspector {
 
   // ---------------------------------------------------------------- whose ice is this?
 
+  /** Begin tracing from the open popup, with a fresh set of start points. */
+  private startTrace() {
+    const radius = Number(this.spread.value) * 1000;
+    this.traceOffsets = [[0, 0]];
+    for (let i = 1; radius > 0 && i < ENSEMBLE; i++) {
+      const r = radius * Math.sqrt(Math.random());
+      const a = Math.random() * 2 * Math.PI;
+      this.traceOffsets.push([r * Math.cos(a), r * Math.sin(a)]);
+    }
+    this.runTrace();
+  }
+
+  /** Re-trace after the time changed: soon after it settles, and now and then while it keeps moving. */
+  private queueTrace() {
+    const now = performance.now();
+    if (!this.traceQueuedAt) this.traceQueuedAt = now;
+    clearTimeout(this.traceTimer);
+    const wait = now - this.traceQueuedAt > 500 ? 0 : 150;
+    this.traceTimer = window.setTimeout(() => {
+      this.traceQueuedAt = 0;
+      this.runTrace();
+    }, wait);
+  }
+
   private runTrace() {
     this.trace().catch((e) => {
       console.error(e);
@@ -324,32 +356,33 @@ export class Inspector {
 
   private async trace() {
     const place = this.place;
-    if (!place) return;
+    const offsets = this.traceOffsets;
+    if (!place || !offsets) return;
+    const run = ++this.traceRun;
+    const age = this.age;
     const here = this.ice.sample(place.u, place.v);
     if (!here || here.thickness <= 0) {
       this.ice.setTraces("flow", []);
-      this.traceText.textContent = `No ice here at ${this.age.toFixed(1)} ka. Move the time slider to when this place is covered and try again.`;
+      this.traceText.textContent = `No ice here at ${age.toFixed(1)} ka. Move the time slider to when this place is covered.`;
       return;
     }
-    this.traceText.textContent = "Following the flow…";
+    if (!this.traceText.childElementCount) this.traceText.textContent = "Following the flow…";
     const flow = await this.ice.flowNow();
-    if (this.place !== place) return;
+    // the popup was closed, or time has moved on and a newer run is under way
+    if (this.place !== place || this.traceRun !== run) return;
     if (!flow) {
       this.traceText.textContent = "The flow data could not be loaded. Check the connection and try again.";
       return;
     }
 
-    // start points: the clicked point, plus random points in a patch around it
-    const radius = Number(this.spread.value) * 1000;
+    // start points: the clicked point, plus the patch around it (those that lie on ice now)
     const b = this.manifest.mercatorBounds;
     const my = b[1] + place.v * (b[3] - b[1]);
     const metresPerUnit = EARTH_CIRCUMFERENCE / Math.cosh(Math.PI * (1 - 2 * my));
-    const starts: [number, number][] = [[place.u, place.v]];
-    for (let i = 0; radius > 0 && i < ENSEMBLE * 3 && starts.length < ENSEMBLE; i++) {
-      const r = radius * Math.sqrt(Math.random());
-      const a = Math.random() * 2 * Math.PI;
-      const u = place.u + (r * Math.cos(a)) / metresPerUnit / (b[2] - b[0]);
-      const v = place.v + (r * Math.sin(a)) / metresPerUnit / (b[3] - b[1]);
+    const starts: [number, number][] = [];
+    for (const [east, south] of offsets) {
+      const u = place.u + east / metresPerUnit / (b[2] - b[0]);
+      const v = place.v + south / metresPerUnit / (b[3] - b[1]);
       if ((this.ice.sample(u, v)?.thickness ?? 0) > 0) starts.push([u, v]);
     }
     const up = starts.map(([u, v]) => this.follow(flow, u, v, -1));
@@ -408,7 +441,7 @@ export class Inspector {
       return i;
     };
     const note = document.createElement("em");
-    note.textContent = ` ${starts.length > 1 ? `${starts.length} paths. ` : ""}Follows the flow of ${this.age.toFixed(1)} ka as if it stayed unchanged.`;
+    note.textContent = ` ${starts.length > 1 ? `${starts.length} paths. ` : ""}Follows the flow of ${age.toFixed(1)} ka as if it stayed unchanged.`;
     this.traceText.replaceChildren(
       swatch(UPSTREAM),
       `Comes from: ${sources}. ${span(up, (t) => t.metres, 1000, 1)} km upstream, ${years(up)} years of travel at these speeds.`,
