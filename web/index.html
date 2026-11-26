@@ -47,9 +47,27 @@
             the reconstructed glacier surface of about 1850
             (<a href="https://doi.org/10.5281/zenodo.14336827" target="_blank" rel="noopener">Reinthaler &amp; Paul 2025</a>).
             Only 1850 is data: towards today that ice is thinned in step with the area loss inside the inventory outlines.
+            After 2025 the bar runs on to 2100 with a model projection, so far only for the Great Aletsch Glacier and the glaciers connected to it:
+            our own runs of the <a href="https://github.com/instructed-glacier-model/igm" target="_blank" rel="noopener">Instructed Glacier Model</a>
+            with glacier data from <a href="https://oggm.org" target="_blank" rel="noopener">OGGM</a>, under two idealised
+            temperature paths. They are not calibrated against the measured retreat and are not published projections:
+            read them as an illustration of the mechanism. The thinning ice sinks below today's terrain, so it is shown
+            as colour on the ground instead of in 3D.
           </p>
           <label><input type="checkbox" id="recent-glaciers" checked /> Glacier extent</label>
           <label><input type="checkbox" id="recent-3d" checked /> Lost ice in 3D</label>
+          <div id="future-menu" hidden>
+            <label class="range">After 2025: projection
+              <select id="future-scenario"></select>
+            </label>
+            <p class="note" id="future-note"></p>
+            <div id="future-legend" hidden>
+              <span class="bar" id="future-bar"></span>
+              <span class="scale"><span>0</span><span>300</span><span>600 m of ice left</span></span>
+              <span class="gone"><i id="future-gone"></i> ice gone since 2020</span>
+            </div>
+            <button type="button" id="future-fly">Show the Aletsch area</button>
+          </div>
           <label class="range">Backdrop
             <select id="recent-backdrop">
               <option value="maps">Historic maps</option>
@@ -179,6 +197,7 @@
       </div>
       <div id="recent-track">
         <input type="range" id="recent-time" min="1850" max="2025" step="1" value="2025" aria-label="Year" />
+        <div id="recent-future" hidden>model projection · Aletsch area only</div>
         <div id="recent-marks"></div>
       </div>
       <select id="recent-speed" aria-label="Playback speed">

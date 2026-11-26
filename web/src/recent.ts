@@ -20,7 +20,10 @@ interface Inventories {
 export type Backdrop = "none" | "maps" | "photos";
 
 export const FIRST_YEAR = 1850;
+/** today: the last year with maps, photographs and inventories */
 export const LAST_YEAR = 2025;
+/** end of the time bar; beyond today there are model projections only */
+export const END_YEAR = 2100;
 
 const WMTS = "https://wmts.geo.admin.ch/1.0.0";
 /** Historic national maps: one composite per year, 1844 to 2021. */
@@ -175,7 +178,8 @@ export class RecentEra {
     // glaciers: the earlier inventory fades into the later one
     const glaciers = this.on && this.showGlaciers;
     const [a, b, t] = this.bracket();
-    const fill = this.backdrop === "none" && !this.solid ? 0.85 : 0.3; // maps, photographs and the 3D ice show the ice themselves
+    // maps, photographs and the 3D ice show the ice themselves; beyond today only the outline stays, as a reference
+    const fill = this.year > LAST_YEAR ? 0 : this.backdrop === "none" && !this.solid ? 0.85 : 0.3;
     [
       [a, 1 - t],
       [b, t],

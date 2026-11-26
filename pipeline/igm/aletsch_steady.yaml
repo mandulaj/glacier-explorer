@@ -1,0 +1,49 @@
+# @package _global_
+# Great Aletsch Glacier, 2020 to 2100, with the Instructed Glacier Model (IGM 3.3).
+# Climate: the OGGM monthly climate of 1960-1990, shifted by a temperature offset that goes
+# from +1.8 degC in 2020 (about the warming of the Swiss Alps since that period) to +1.8 degC in 2100.
+# An idealised scenario, not a published projection. Run with pipeline/igm/run.sh.
+
+defaults:
+  - override /inputs:
+    - oggm_shop
+    - local
+  - override /processes:
+    - climate
+    - smb
+    - iceflow
+    - time
+    - thk
+  - override /outputs:
+    - write_ncdf
+    - write_ts
+
+inputs:
+  oggm_shop:
+    RGI_ID: "RGI2000-v7.0-C-11-01323"  # the Aletsch glacier complex in RGI 7
+    # the RGI 7 glacier directories hold this thickness estimate only (Millan et al. 2022);
+    # with the default source the run would silently start without any ice
+    thk_source: millan_ice_thickness
+
+processes:
+  climate:
+    method: oggm
+    oggm:
+      clim_trend_array:
+        - ["time", "delta_temp", "prec_scal"]
+        - [2020, 1.8, 1.0]
+        - [2100, 1.8, 1.0]
+  smb:
+    method: oggm
+  time:
+    start: 2020.0
+    end: 2100.0
+    save: 5.0
+
+outputs:
+  write_ncdf:
+    vars_to_save:
+      - topg
+      - usurf
+      - thk
+      - velsurf_mag

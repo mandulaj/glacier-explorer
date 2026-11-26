@@ -11,7 +11,8 @@ import { IceLayer } from "./iceLayer";
 import { Inspector } from "./inspect";
 import { FlyControls } from "./fly";
 import { backgroundColor, buildStyle, FIRST_LABEL_LAYER, GROUP_LAYERS, TERRAIN_SOURCE, type LabelGroup } from "./style";
-import { FIRST_YEAR, LAST_YEAR, RecentEra, type Backdrop } from "./recent";
+import { FutureGlacier, GONE_COLOR, THICKNESS_RAMP, type FutureManifest } from "./future";
+import { END_YEAR, FIRST_YEAR, LAST_YEAR, RecentEra, type Backdrop } from "./recent";
 import { installSeabed } from "./seabed";
 import { SeaLayer, type SeaLevelCurve } from "./seaLayer";
 import { TimeBar } from "./timebar";
@@ -29,7 +30,7 @@ function ageFromUrl(): number | null {
 function yearFromUrl(): number | null {
   const entry = location.hash.slice(1).split("&").find((part) => part.startsWith("y="));
   const year = entry ? Number(entry.slice(2)) : NaN;
-  return Number.isFinite(year) ? Math.min(Math.max(Math.round(year), FIRST_YEAR), LAST_YEAR) : null;
+  return Number.isFinite(year) ? Math.min(Math.max(Math.round(year), FIRST_YEAR), END_YEAR) : null;
 }
 
 let yearTimer = 0;
@@ -259,36 +260,42 @@ function bindRecent(map: maplibregl.Map, onSwitch: (on: boolean) => void): Recen
   const opacity = el<HTMLInputElement>("recent-opacity");
   const glaciers = el<HTMLInputElement>("recent-glaciers");
   slider.min = String(FIRST_YEAR);
-  slider.max = String(LAST_YEAR);
+  slider.max = String(END_YEAR); // cut back to today if there is no projection data
 
+  let future: FutureGlacier | null = null;
   const recent = new RecentEra(map, "coast", () => {
     const text = recent.describe();
-    el("recent-sub").textContent = text.glaciers;
+    el("recent-sub").textContent = future?.active ? future.describe() : text.glaciers;
     el("recent-backdrop-note").textContent = text.backdrop;
   });
-  const left = (year: number) => ((year - FIRST_YEAR) / (LAST_YEAR - FIRST_YEAR)) * 100;
+  /** end of the bar: 2100, or today when there is no projection */
+  const lastYear = () => Number(slider.max);
+  const left = (year: number) => ((year - FIRST_YEAR) / (lastYear() - FIRST_YEAR)) * 100;
   const setYear = (year: number) => {
     slider.value = String(year);
     el("recent-year").textContent = slider.value;
     recent.setYear(Number(slider.value));
     if (recent.active) yearToUrl(Number(slider.value));
     applyLia();
+    applyFuture();
   };
   slider.addEventListener("input", () => setYear(Number(slider.value)));
 
   const marks = el("recent-marks");
-  for (let year = FIRST_YEAR; year <= LAST_YEAR; year += 25) {
-    const span = document.createElement("span");
-    span.style.left = `${left(year)}%`;
-    span.textContent = String(year);
-    if (year === FIRST_YEAR) span.style.transform = "none";
-    if (year === LAST_YEAR) span.style.transform = "translateX(-100%)";
-    marks.append(span);
-  }
-  let marked = false;
-  const markInventories = () => {
-    if (marked || !recent.inventories.length) return;
-    marked = true;
+  /** Year labels and inventory marks; drawn again when the bar grows to 2100. */
+  const drawMarks = () => {
+    marks.replaceChildren();
+    for (let year = FIRST_YEAR; year <= lastYear(); year += 25) {
+      const span = document.createElement("span");
+      span.style.left = `${left(year)}%`;
+      span.textContent = String(year);
+      if (year === FIRST_YEAR) span.style.transform = "none";
+      if (year === lastYear()) span.style.transform = "translateX(-100%)";
+      marks.append(span);
+    }
+    const band = el("recent-future");
+    band.hidden = lastYear() <= LAST_YEAR;
+    band.style.left = `${left(LAST_YEAR)}%`;
     for (const inv of recent.inventories) {
       const button = document.createElement("button");
       button.type = "button";
@@ -299,6 +306,7 @@ function bindRecent(map: maplibregl.Map, onSwitch: (on: boolean) => void): Recen
       marks.append(button);
     }
   };
+  drawMarks();
 
   let playing = false;
   let last = 0;
@@ -312,8 +320,8 @@ function bindRecent(map: maplibregl.Map, onSwitch: (on: boolean) => void): Recen
     if (!playing) return;
     position += Math.min((now - last) / 1000, 0.1) * Number(speed.value);
     last = now;
-    if (position >= LAST_YEAR) {
-      setYear(LAST_YEAR);
+    if (position >= lastYear()) {
+      setYear(lastYear());
       stop();
       return;
     }
@@ -325,7 +333,7 @@ function bindRecent(map: maplibregl.Map, onSwitch: (on: boolean) => void): Recen
     playing = true;
     play.textContent = "❚❚";
     play.setAttribute("aria-label", "Pause");
-    position = Number(slider.value) >= LAST_YEAR ? FIRST_YEAR : Number(slider.value);
+    position = Number(slider.value) >= lastYear() ? FIRST_YEAR : Number(slider.value);
     last = performance.now();
     requestAnimationFrame(tick);
   };
@@ -350,7 +358,7 @@ function bindRecent(map: maplibregl.Map, onSwitch: (on: boolean) => void): Recen
     if (!lia) return;
     lia.visible = recent.active && solid.checked;
     lia.exaggeration = Number(exaggeration.value);
-    lia.setAge(LAST_YEAR - Number(slider.value)); // frames are stored old to young by age, like the ice age
+    lia.setAge(Math.max(LAST_YEAR - Number(slider.value), 0)); // frames are stored old to young by age, like the ice age
   };
   const loadLia = () =>
     (liaLoading ??= fetchJson<Manifest>("recent/lia/manifest.json")
@@ -365,7 +373,46 @@ function bindRecent(map: maplibregl.Map, onSwitch: (on: boolean) => void): Recen
       }));
   exaggeration.addEventListener("input", applyLia);
 
+  // after today: a model projection, draped on the terrain (see future.ts)
+  const scenario = el<HTMLSelectElement>("future-scenario");
+  let futureLoading: Promise<void> | null = null;
+  const applyFuture = () => {
+    if (!future) return;
+    const year = Number(slider.value);
+    future.set(recent.active, scenario.value, year);
+    const chosen = future.manifest.scenarios.find((s) => s.id === scenario.value)!;
+    el("future-note").textContent = `${future.manifest.glacier} only (Aletsch and connected glaciers): ${chosen.detail}.`;
+    el("future-legend").hidden = !future.active;
+    if (future.active) el("recent-sub").textContent = future.describe();
+  };
+  const loadFuture = () =>
+    (futureLoading ??= fetchJson<FutureManifest>("recent/future/manifest.json")
+      .then((manifest) => {
+        future = new FutureGlacier(map, manifest, "coast");
+        for (const s of manifest.scenarios) scenario.add(new Option(s.label, s.id));
+        el("future-menu").hidden = false;
+        el("future-bar").style.background = rampCss(THICKNESS_RAMP);
+        el("future-gone").style.background = GONE_COLOR;
+        el("future-fly").addEventListener("click", () => {
+          map.flyTo({ center: [manifest.lon + 0.03, manifest.lat - 0.04], zoom: 11.3, pitch: 58, bearing: 25 });
+          if (Number(slider.value) <= LAST_YEAR) setYear(LAST_YEAR + 1);
+        });
+        slider.max = String(Math.max(manifest.endYear, LAST_YEAR));
+        drawMarks();
+      })
+      .catch(() => {
+        // data built without projections: the bar ends today
+        slider.max = String(LAST_YEAR);
+        drawMarks();
+        setYear(Math.min(Number(slider.value), LAST_YEAR));
+      }));
+  scenario.addEventListener("input", () => {
+    applyFuture();
+    recent.setYear(Number(slider.value)); // refreshes the readout
+  });
+
   const applyMenu = () => {
+    applyFuture();
     recent.setBackdrop(backdrop.value as Backdrop, Number(opacity.value));
     recent.setGlaciers(glaciers.checked, solid.checked && !solid.closest("label")!.hidden);
     applyLia();
@@ -394,9 +441,9 @@ function bindRecent(map: maplibregl.Map, onSwitch: (on: boolean) => void): Recen
     yearToUrl(on ? Number(slider.value) : null);
     applyMenu();
     await ready;
-    if (on) await loadLia();
+    if (on) await Promise.all([loadLia(), loadFuture()]);
+    drawMarks(); // the inventories have arrived
     applyMenu();
-    markInventories();
     if (on) setYear(Number(slider.value));
   };
   el("era-recent").addEventListener("click", () => setEra(true));

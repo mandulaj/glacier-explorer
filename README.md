@@ -32,6 +32,8 @@ ground against its bed, and where it carried and dropped rock debris.
 - **Since 1850**: a second time bar in calendar years for Switzerland, with glacier extents from the
   Swiss Glacier Inventories over swisstopo's historic maps or aerial photographs of the chosen year,
   draped on the 3D terrain. The ice lost since about 1850 stands on today's terrain in 3D.
+  Beyond today the bar runs on to 2100 with our own model runs for the Aletsch area under two
+  idealised temperature paths: remaining ice coloured by thickness, bare ground where it is gone.
 - **Northern ice sheet**: zoom out and the ice sheet over the British Isles, Scandinavia and the
   Barents Sea grows and shrinks with the time slider (flat outlines from geological reconstructions).
 - **Labels**: borders, towns, summits with elevation, lakes and rivers.
@@ -63,6 +65,10 @@ ground against its bed, and where it carried and dropped rock debris.
 - **Little Ice Age ice surface**: Reinthaler & Paul (2025),
   [doi:10.5281/zenodo.14336827](https://doi.org/10.5281/zenodo.14336827) (CC BY 4.0). Only the
   1850 surface is data; its decline to today is interpolated with the inventory outlines.
+- **Projections to 2100**: own runs of the [Instructed Glacier Model](https://github.com/instructed-glacier-model/igm)
+  (IGM 3.3, GPL-3.0; Jouvet et al.) with glacier geometry, thickness (Millan et al. 2022) and climate
+  from [OGGM](https://oggm.org). Idealised temperature paths, not calibrated against the measured
+  retreat: an illustration, not a published projection.
 - **Historic maps and aerial photographs**: [swisstopo](https://www.swisstopo.admin.ch/en/timetravel)
   "Zeitreise" map series and SWISSIMAGE time travel, loaded from the swisstopo tile service.
 - **Ice sheet outside the Alps**: DATED-1 time slices, 38–10 ka, Hughes et al. (2016),
@@ -133,6 +139,11 @@ uv run --project pipeline python -I pipeline/recent.py
 # doi:10.5281/zenodo.14336827 into data/recent/lia/ (needs the inventories above; downloads
 # today's terrain from Mapterhorn)
 uv run --project pipeline python -I pipeline/lia.py
+
+# optional: projections to 2100 with IGM (own environment, about 5 minutes per scenario on a laptop)
+uv venv --python 3.12 data/igm/.venv && uv pip install --python data/igm/.venv/bin/python igm-model
+pipeline/igm/run.sh
+uv run --project pipeline python -I pipeline/future.py
 ```
 
 What the pipeline does:
