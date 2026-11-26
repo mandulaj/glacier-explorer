@@ -1,0 +1,12 @@
+[project]
+name = "glacier-pipeline"
+version = "0.1.0"
+description = "Convert Alpine ice sheet simulations (Seguinot et al. 2018) to static web assets"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "h5py>=3.10",
+    "pyproj>=3.6",
+    "pillow>=10",
+]

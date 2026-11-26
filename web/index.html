@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>Alpine Ice Age Explorer</title>
+  </head>
+  <body>
+    <div id="map"></div>
+
+    <aside id="menu">
+      <button id="menu-toggle" aria-expanded="true" aria-controls="menu-body">Layers</button>
+      <div id="menu-body">
+        <fieldset>
+          <legend>Base map</legend>
+          <label class="range">Relief shading <input type="range" id="shading" min="0" max="1" step="0.05" value="0.55" /></label>
+        </fieldset>
+        <fieldset>
+          <legend>Labels</legend>
+          <label><input type="checkbox" data-group="borders" checked /> Borders</label>
+          <label><input type="checkbox" data-group="towns" checked /> Towns</label>
+          <label><input type="checkbox" data-group="summits" checked /> Summits</label>
+          <label><input type="checkbox" data-group="water" checked /> Lakes &amp; rivers</label>
+        </fieldset>
+        <fieldset>
+          <legend>Ice</legend>
+          <label><input type="checkbox" id="ice-visible" checked /> Show ice</label>
+          <label><input type="checkbox" id="contour-labels" checked /> Contour heights (m)</label>
+          <label><input type="checkbox" id="particles" /> Flow particles</label>
+          <label><input type="checkbox" id="debris" /> Debris transport &amp; deposits</label>
+          <div id="debris-legend" hidden></div>
+          <label class="range">Colour by
+            <select id="ice-mode">
+              <option value="plain">Ice (plain)</option>
+              <option value="speed">Surface speed</option>
+              <option value="sliding">Basal sliding (grinding)</option>
+              <option value="temperature">Frozen or sliding base</option>
+              <option value="erosion">Cumulative erosion</option>
+            </select>
+          </label>
+          <label class="range">Opacity <input type="range" id="ice-opacity" min="0.2" max="1" step="0.05" value="0.9" /></label>
+          <label class="range">Relief ×<output id="exag-out">1.0</output>
+            <input type="range" id="exaggeration" min="1" max="3" step="0.1" value="1" /></label>
+        </fieldset>
+        <fieldset>
+          <legend>Fly</legend>
+          <p class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Space</kbd> up · <kbd>Shift</kbd> down<br />
+            <kbd>F</kbd> mouse look (<kbd>Esc</kbd> to release) · <kbd>P</kbd> play</p>
+          <button id="look" type="button">Mouse look</button>
+        </fieldset>
+        <p class="note">
+          Ice: PISM simulation, 1&nbsp;km, <a href="https://doi.org/10.5194/tc-12-3265-2018" target="_blank" rel="noopener">Seguinot et al. 2018</a>.
+          Model result, not a reconstruction: thickness is likely overestimated and the present-day state is not today's glaciers.
+        </p>
+      </div>
+    </aside>
+
+    <div id="legend" hidden>
+      <div id="legend-title"></div>
+      <div id="legend-bar"></div>
+      <div id="legend-ticks"></div>
+    </div>
+
+    <footer id="timebar">
+      <button id="play" aria-label="Play">▶</button>
+      <div id="readout"><strong id="age-label">24.0 ka</strong><span id="age-sub">years ago</span></div>
+      <div id="track">
+        <canvas id="curve"></canvas>
+        <input type="range" id="time" min="0" max="119" step="0.05" value="95" aria-label="Time" />
+        <div id="ticks"></div>
+      </div>
+      <select id="speed" aria-label="Playback speed">
+        <option value="1">1 ka/s</option>
+        <option value="3" selected>3 ka/s</option>
+        <option value="10">10 ka/s</option>
+      </select>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
