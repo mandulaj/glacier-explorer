@@ -296,17 +296,24 @@ function bindRecent(map: maplibregl.Map, onSwitch: (on: boolean) => void): Recen
     const band = el("recent-future");
     band.hidden = lastYear() <= LAST_YEAR;
     band.style.left = `${left(LAST_YEAR)}%`;
+    // neighbouring inventory years (2010, 2016) run into each other on a short bar
+    const track = marks.clientWidth || 600;
+    let previous = -Infinity;
     for (const inv of recent.inventories) {
       const button = document.createElement("button");
       button.type = "button";
       button.style.left = `${left(inv.year)}%`;
-      button.textContent = String(inv.year);
+      const x = (left(inv.year) / 100) * track;
+      button.textContent = x - previous < 34 ? `’${String(inv.year).slice(2)}` : String(inv.year);
+      if (x - previous < 34) button.style.transform = "none"; // starts at its year instead of being centred on it
+      previous = x;
       button.title = `${inv.name}: ${inv.area} km² of glaciers`;
       button.addEventListener("click", () => setYear(inv.year));
       marks.append(button);
     }
   };
   drawMarks();
+  new ResizeObserver(drawMarks).observe(marks);
 
   let playing = false;
   let last = 0;

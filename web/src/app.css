@@ -879,3 +879,19 @@ button.era {
   background: white;
   cursor: pointer;
 }
+
+/* the slider spans the whole track: the browser's focus ring around it reads as a stray frame */
+#recent-time:focus,
+#time:focus {
+  outline: none;
+}
+
+#recent-time:focus-visible::-webkit-slider-thumb,
+#time:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 2px rgba(31, 111, 178, 0.6);
+}
+
+#recent-time:focus-visible::-moz-range-thumb,
+#time:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 2px rgba(31, 111, 178, 0.6);
+}
