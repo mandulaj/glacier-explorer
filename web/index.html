@@ -13,7 +13,12 @@
       <button id="menu-toggle" aria-expanded="true" aria-controls="menu-body">Layers</button>
       <div id="menu-body">
         <fieldset>
-          <legend>Base map</legend>
+          <legend>Base map <button type="button" class="info" aria-expanded="false" aria-controls="info-base" aria-label="About the map data">i</button></legend>
+          <p class="info-text" id="info-base" hidden>
+            Terrain from <a href="https://mapterhorn.com/attribution/" target="_blank" rel="noopener">Mapterhorn</a>
+            (swisstopo, BEV, IGN and others); places and borders from OpenStreetMap via OpenFreeMap.
+            Turn the shading down to zero for a plain black-and-white map.
+          </p>
           <label class="range">Relief shading <input type="range" id="shading" min="0" max="1" step="0.05" value="0.55" /></label>
         </fieldset>
         <fieldset>
@@ -24,7 +29,14 @@
           <label><input type="checkbox" data-group="water" checked /> Lakes &amp; rivers</label>
         </fieldset>
         <fieldset>
-          <legend>Ice</legend>
+          <legend>Ice <button type="button" class="info" aria-expanded="false" aria-controls="info-ice" aria-label="About the ice data">i</button></legend>
+          <p class="info-text" id="info-ice" hidden>
+            Ice from a PISM simulation at 1&nbsp;km resolution,
+            <a href="https://doi.org/10.5194/tc-12-3265-2018" target="_blank" rel="noopener">Seguinot et al. 2018</a>.
+            It is a model result, not a reconstruction: thickness is likely overestimated, and the present-day
+            state is not today's glaciers. Erosion is a relative potential, and debris sources are assigned by
+            nearest massif.
+          </p>
           <label><input type="checkbox" id="ice-visible" checked /> Show ice</label>
           <label><input type="checkbox" id="contour-labels" checked /> Contour heights (m)</label>
           <label><input type="checkbox" id="particles" /> Flow particles</label>
@@ -44,15 +56,13 @@
             <input type="range" id="exaggeration" min="1" max="3" step="0.1" value="1" /></label>
         </fieldset>
         <fieldset>
-          <legend>Fly</legend>
-          <p class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>E</kbd> up · <kbd>Q</kbd> down<br />
-            <kbd>F</kbd> mouse look (<kbd>Esc</kbd> to release) · <kbd>P</kbd> play</p>
+          <legend>Fly <button type="button" class="info" aria-expanded="false" aria-controls="info-fly" aria-label="Flying controls">i</button></legend>
+          <p class="info-text keys" id="info-fly" hidden><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move<br />
+            <kbd>E</kbd> up · <kbd>Q</kbd> down<br />
+            <kbd>F</kbd> mouse look, <kbd>Esc</kbd> releases<br />
+            <kbd>P</kbd> play / pause time</p>
           <button id="look" type="button">Mouse look</button>
         </fieldset>
-        <p class="note">
-          Ice: PISM simulation, 1&nbsp;km, <a href="https://doi.org/10.5194/tc-12-3265-2018" target="_blank" rel="noopener">Seguinot et al. 2018</a>.
-          Model result, not a reconstruction: thickness is likely overestimated and the present-day state is not today's glaciers.
-        </p>
       </div>
     </aside>
 

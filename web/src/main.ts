@@ -96,6 +96,14 @@ function bindMenu(map: maplibregl.Map, ice: IceLayer, redrawTerrain: () => void)
     toggle.setAttribute("aria-expanded", String(!collapsed));
   });
 
+  document.querySelectorAll<HTMLButtonElement>("button.info").forEach((button) =>
+    button.addEventListener("click", () => {
+      const text = document.getElementById(button.getAttribute("aria-controls")!)!;
+      text.hidden = !text.hidden;
+      button.setAttribute("aria-expanded", String(!text.hidden));
+    }),
+  );
+
   const whenReady = (fn: () => void) => (map.isStyleLoaded() ? fn() : map.once("load", fn));
 
   const shading = document.getElementById("shading") as HTMLInputElement;

@@ -88,16 +88,39 @@ label.range input {
   margin-top: 2px;
 }
 
-.note {
-  margin: 8px 0 0;
-  padding-top: 8px;
-  border-top: 1px solid var(--line);
+/* (i) buttons reveal explanatory text that would otherwise clutter the menu */
+.info {
+  width: 15px;
+  height: 15px;
+  margin-left: 4px;
+  padding: 0;
+  border: 1px solid var(--muted);
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+  font: italic 600 10px/13px Georgia, serif;
+  text-transform: none;
+  vertical-align: 1px;
+  cursor: pointer;
+}
+
+.info[aria-expanded="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.info-text {
+  margin: 2px 0 8px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.05);
   font-size: 11.5px;
   line-height: 1.4;
   color: var(--muted);
 }
 
-.note a {
+.info-text a {
   color: var(--accent);
 }
 
@@ -314,11 +337,8 @@ label.range select {
   border: 1px solid rgba(0, 0, 0, 0.35);
 }
 
-.keys {
-  margin: 4px 0 6px;
-  font-size: 11.5px;
-  line-height: 1.9;
-  color: var(--muted);
+.info-text.keys {
+  line-height: 2;
 }
 
 kbd {
