@@ -630,3 +630,166 @@ kbd {
   font-size: 0.82em;
   opacity: 0.7;
 }
+
+/* --- since 1850: a time bar of its own, in calendar years --- */
+#timebar[hidden],
+#recentbar[hidden] {
+  display: none;
+}
+
+#recentbar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 28px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-radius: 12px;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(6px);
+  z-index: 2;
+}
+
+#recent-play {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+#recent-readout {
+  flex: none;
+  width: 190px;
+  line-height: 1.15;
+}
+
+#recent-year {
+  display: block;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+#recent-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+#recent-track {
+  position: relative;
+  flex: 1;
+  height: 62px;
+  min-width: 0;
+}
+
+#recent-time {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 16px;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: linear-gradient(rgba(96, 160, 214, 0.35), rgba(96, 160, 214, 0.35)) center / 100% 6px no-repeat;
+  cursor: pointer;
+}
+
+#recent-time::-webkit-slider-runnable-track {
+  height: 100%;
+  background: transparent;
+}
+
+#recent-time::-moz-range-track {
+  height: 100%;
+  background: transparent;
+}
+
+#recent-time::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 3px;
+  height: 100%;
+  background: #d1342f;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.8);
+}
+
+#recent-time::-moz-range-thumb {
+  width: 3px;
+  height: 100%;
+  border: 0;
+  background: #d1342f;
+  border-radius: 2px;
+}
+
+#recent-marks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+#recent-marks span {
+  position: absolute;
+  bottom: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+/* years with a glacier inventory */
+#recent-marks button {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  padding: 0 3px;
+  border: 0;
+  border-radius: 3px;
+  background: rgba(31, 111, 178, 0.14);
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  line-height: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+#recent-speed {
+  flex: none;
+  font: inherit;
+  padding: 4px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: white;
+}
+
+button.era {
+  flex: none;
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: white;
+  color: var(--accent);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  #recent-readout {
+    width: 96px;
+  }
+  #recent-speed {
+    display: none;
+  }
+}

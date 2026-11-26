@@ -58,6 +58,10 @@ export class TimeBar {
     this.onChange(age);
   }
 
+  pause() {
+    if (this.playing) this.toggle();
+  }
+
   private toggle() {
     this.playing = !this.playing;
     this.playButton.textContent = this.playing ? "❚❚" : "▶";

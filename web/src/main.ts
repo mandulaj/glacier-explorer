@@ -11,6 +11,7 @@ import { IceLayer } from "./iceLayer";
 import { Inspector } from "./inspect";
 import { FlyControls } from "./fly";
 import { backgroundColor, buildStyle, FIRST_LABEL_LAYER, GROUP_LAYERS, TERRAIN_SOURCE, type LabelGroup } from "./style";
+import { FIRST_YEAR, LAST_YEAR, RecentEra, type Backdrop } from "./recent";
 import { installSeabed } from "./seabed";
 import { SeaLayer, type SeaLevelCurve } from "./seaLayer";
 import { TimeBar } from "./timebar";
@@ -22,6 +23,23 @@ function ageFromUrl(): number | null {
   const entry = location.hash.slice(1).split("&").find((part) => part.startsWith("t="));
   const age = entry ? Number(entry.slice(2)) : NaN;
   return Number.isFinite(age) ? age : null;
+}
+
+/** Year of the "since 1850" view in the URL; absent in the ice age view. */
+function yearFromUrl(): number | null {
+  const entry = location.hash.slice(1).split("&").find((part) => part.startsWith("y="));
+  const year = entry ? Number(entry.slice(2)) : NaN;
+  return Number.isFinite(year) ? Math.min(Math.max(Math.round(year), FIRST_YEAR), LAST_YEAR) : null;
+}
+
+let yearTimer = 0;
+function yearToUrl(year: number | null) {
+  clearTimeout(yearTimer);
+  yearTimer = window.setTimeout(() => {
+    const parts = location.hash.slice(1).split("&").filter((part) => part && !part.startsWith("y="));
+    if (year !== null) parts.push(`y=${year}`);
+    history.replaceState(history.state, "", `#${parts.join("&")}`);
+  }, 250);
 }
 
 let urlTimer = 0;
@@ -110,7 +128,9 @@ async function main() {
     contextReadout.textContent = context.visible ? context.describe() : "";
   };
   let depositStep = NaN;
+  let recent: RecentEra | null = null;
   const timebar = new TimeBar(maxAge, series, Math.min(Math.max(ageFromUrl() ?? INITIAL_AGE, 0), maxAge), (age) => {
+    if (recent?.active) return; // the ice age is off screen
     ageToUrl(age);
     ice.setAge(age);
     if (swiss && modelSelect.value === "swiss") swiss.setAge(age);
@@ -184,11 +204,158 @@ async function main() {
     inspector = new Inspector(map, ice, manifest);
     inspector.setAge(timebar.age);
     if (manifest.debris) bindDebris(map, ice, manifest, () => timebar.age);
+    recent = bindRecent(map, (on) => {
+      // the ice age layers make way, and come back as the menu and the time bar say
+      timebar.pause();
+      inspector!.enabled = !on;
+      if (on) {
+        ice.visible = false;
+        if (swiss) swiss.visible = false;
+        if (context) context.visible = false;
+        contextReadout.textContent = "";
+        sea?.setAge(0);
+        seaReadout.textContent = "as today";
+      } else {
+        ice.visible = (document.getElementById("ice-visible") as HTMLInputElement).checked;
+        if (context) context.visible = contextBox.checked;
+        timebar.age = timebar.age;
+      }
+      map.triggerRepaint();
+    });
   });
 
   bindMenu(map, ice, sea, () => Object.values(ground)[0]?.invalidate());
   // handy for debugging and automated checks
   Object.assign(window, { map, ice, timebar });
+}
+
+/** The "since 1850" view: its time bar, menu section and URL parameter. */
+function bindRecent(map: maplibregl.Map, onSwitch: (on: boolean) => void): RecentEra {
+  const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+  const slider = el<HTMLInputElement>("recent-time");
+  const play = el<HTMLButtonElement>("recent-play");
+  const speed = el<HTMLSelectElement>("recent-speed");
+  const backdrop = el<HTMLSelectElement>("recent-backdrop");
+  const opacity = el<HTMLInputElement>("recent-opacity");
+  const glaciers = el<HTMLInputElement>("recent-glaciers");
+  slider.min = String(FIRST_YEAR);
+  slider.max = String(LAST_YEAR);
+
+  const recent = new RecentEra(map, "coast", () => {
+    const text = recent.describe();
+    el("recent-sub").textContent = text.glaciers;
+    el("recent-backdrop-note").textContent = text.backdrop;
+  });
+  const left = (year: number) => ((year - FIRST_YEAR) / (LAST_YEAR - FIRST_YEAR)) * 100;
+  const setYear = (year: number) => {
+    slider.value = String(year);
+    el("recent-year").textContent = slider.value;
+    recent.setYear(Number(slider.value));
+    if (recent.active) yearToUrl(Number(slider.value));
+  };
+  slider.addEventListener("input", () => setYear(Number(slider.value)));
+
+  const marks = el("recent-marks");
+  for (let year = FIRST_YEAR; year <= LAST_YEAR; year += 25) {
+    const span = document.createElement("span");
+    span.style.left = `${left(year)}%`;
+    span.textContent = String(year);
+    if (year === FIRST_YEAR) span.style.transform = "none";
+    if (year === LAST_YEAR) span.style.transform = "translateX(-100%)";
+    marks.append(span);
+  }
+  let marked = false;
+  const markInventories = () => {
+    if (marked || !recent.inventories.length) return;
+    marked = true;
+    for (const inv of recent.inventories) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.style.left = `${left(inv.year)}%`;
+      button.textContent = String(inv.year);
+      button.title = `${inv.name}: ${inv.area} km² of glaciers`;
+      button.addEventListener("click", () => setYear(inv.year));
+      marks.append(button);
+    }
+  };
+
+  let playing = false;
+  let last = 0;
+  let position = 0; // fractional year while playing
+  const stop = () => {
+    playing = false;
+    play.textContent = "▶";
+    play.setAttribute("aria-label", "Play");
+  };
+  const tick = (now: number) => {
+    if (!playing) return;
+    position += Math.min((now - last) / 1000, 0.1) * Number(speed.value);
+    last = now;
+    if (position >= LAST_YEAR) {
+      setYear(LAST_YEAR);
+      stop();
+      return;
+    }
+    if (Math.floor(position) !== Number(slider.value)) setYear(Math.floor(position));
+    requestAnimationFrame(tick);
+  };
+  const toggle = () => {
+    if (playing) return stop();
+    playing = true;
+    play.textContent = "❚❚";
+    play.setAttribute("aria-label", "Pause");
+    position = Number(slider.value) >= LAST_YEAR ? FIRST_YEAR : Number(slider.value);
+    last = performance.now();
+    requestAnimationFrame(tick);
+  };
+  play.addEventListener("click", toggle);
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      // P plays whichever time bar is on screen
+      if (e.code !== "KeyP" || e.ctrlKey || e.metaKey || e.altKey || !recent.active) return;
+      e.stopImmediatePropagation();
+      toggle();
+    },
+    true,
+  );
+
+  const applyMenu = () => {
+    recent.setBackdrop(backdrop.value as Backdrop, Number(opacity.value));
+    recent.setGlaciers(glaciers.checked);
+  };
+  for (const input of [backdrop, opacity, glaciers]) input.addEventListener("input", applyMenu);
+
+  const setEra = async (on: boolean, year?: number) => {
+    stop();
+    el("timebar").hidden = on;
+    el("recentbar").hidden = !on;
+    el("recent-menu").hidden = !on;
+    el("ice-menu").hidden = on;
+    // ice colouring and its legend belong to the ice age: set aside, and restored on the way back
+    const mode = el<HTMLSelectElement>("ice-mode");
+    if (on && !mode.dataset.kept) {
+      mode.dataset.kept = mode.value;
+      mode.value = "plain";
+    } else if (!on && mode.dataset.kept) {
+      mode.value = mode.dataset.kept;
+      delete mode.dataset.kept;
+    }
+    mode.dispatchEvent(new Event("change", { bubbles: true }));
+    const ready = recent.setActive(on); // takes effect at once; the glacier data may still be loading
+    onSwitch(on);
+    if (year !== undefined) setYear(year);
+    yearToUrl(on ? Number(slider.value) : null);
+    applyMenu();
+    await ready;
+    markInventories();
+    if (on) setYear(Number(slider.value));
+  };
+  el("era-recent").addEventListener("click", () => setEra(true));
+  el("era-iceage").addEventListener("click", () => setEra(false));
+  const initial = yearFromUrl();
+  if (initial !== null) setEra(true, initial);
+  return recent;
 }
 
 function bindMenu(map: maplibregl.Map, ice: IceLayer, sea: SeaLayer | null, redrawTerrain: () => void) {

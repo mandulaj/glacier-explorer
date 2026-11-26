@@ -92,12 +92,16 @@ export class Inspector {
   private sectionTitle = document.getElementById("section-title")!;
   private hint = document.getElementById("map-hint")!;
 
+  /** off while the map shows something other than the ice age */
+  enabled = true;
+
   constructor(
     private map: MlMap,
     private ice: IceLayer,
     private manifest: Manifest,
   ) {
     map.on("click", (e) => {
+      if (!this.enabled) return;
       if (document.pointerLockElement) return; // flying with mouse look
       if (this.sectionStart) this.finishSection(e.lngLat);
       else this.open(e.lngLat);

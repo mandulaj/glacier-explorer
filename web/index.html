@@ -34,7 +34,29 @@
           <label><input type="checkbox" data-group="summits" checked /> Summits</label>
           <label><input type="checkbox" data-group="water" checked /> Lakes &amp; rivers</label>
         </fieldset>
-        <fieldset>
+        <fieldset id="recent-menu" hidden>
+          <legend>Since 1850 <button type="button" class="info" aria-expanded="false" aria-controls="info-recent" aria-label="About the data since 1850">i</button></legend>
+          <p class="info-text" id="info-recent" hidden>
+            Switzerland only. Glacier outlines from the Swiss Glacier Inventories of 1850, 1931, 1973, 2010 and 2016
+            (<a href="https://www.glamos.ch/en/downloads#inventories" target="_blank" rel="noopener">GLAMOS</a>, CC BY 4.0).
+            Between two inventories the earlier outline fades into the later one, and the area is interpolated:
+            glaciers did not shrink that evenly. Historic national maps (from 1844) and aerial photographs (from 1926,
+            the latest six years of flights shown together) are served by
+            <a href="https://www.swisstopo.admin.ch/en/timetravel" target="_blank" rel="noopener">swisstopo</a>.
+            The terrain is today's throughout.
+          </p>
+          <label><input type="checkbox" id="recent-glaciers" checked /> Glacier extent</label>
+          <label class="range">Backdrop
+            <select id="recent-backdrop">
+              <option value="maps">Historic maps</option>
+              <option value="photos">Aerial photographs</option>
+              <option value="none">None</option>
+            </select>
+          </label>
+          <p class="note" id="recent-backdrop-note"></p>
+          <label class="range">Backdrop opacity <input type="range" id="recent-opacity" min="0" max="1" step="0.05" value="1" /></label>
+        </fieldset>
+        <fieldset id="ice-menu">
           <legend>Ice <button type="button" class="info" aria-expanded="false" aria-controls="info-ice" aria-label="About the ice data">i</button></legend>
           <p class="info-text" id="info-ice" hidden>
             Ice from a PISM simulation at 1&nbsp;km resolution,
@@ -128,6 +150,25 @@
         <option value="3" selected>3 ka/s</option>
         <option value="10">10 ka/s</option>
       </select>
+      <button type="button" id="era-recent" class="era" title="Glaciers in Switzerland since 1850, year by year">1850 – today ›</button>
+    </footer>
+
+    <footer id="recentbar" hidden>
+      <button id="recent-play" aria-label="Play">▶</button>
+      <div id="recent-readout">
+        <strong id="recent-year">2025</strong>
+        <span id="recent-sub"></span>
+      </div>
+      <div id="recent-track">
+        <input type="range" id="recent-time" min="1850" max="2025" step="1" value="2025" aria-label="Year" />
+        <div id="recent-marks"></div>
+      </div>
+      <select id="recent-speed" aria-label="Playback speed">
+        <option value="5">5 years/s</option>
+        <option value="15" selected>15 years/s</option>
+        <option value="40">40 years/s</option>
+      </select>
+      <button type="button" id="era-iceage" class="era" title="Back to the ice age, 120 000 years to today">‹ Ice age</button>
     </footer>
 
     <script type="module" src="/src/main.ts"></script>
