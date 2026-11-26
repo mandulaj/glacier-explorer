@@ -43,6 +43,13 @@
             It is a model result, not a reconstruction: thickness is likely overestimated, and the present-day
             state is not today's glaciers. Erosion is a relative potential, and debris sources are assigned by
             nearest massif.
+            The second ice model is the
+            <a href="https://swiss-time-machine.org" target="_blank" rel="noopener">Swiss Time Machine</a> simulation
+            (<a href="https://doi.org/10.5281/zenodo.24003777" target="_blank" rel="noopener">data</a>, built on
+            <a href="https://doi.org/10.1038/s41467-025-56168-3" target="_blank" rel="noopener">Leger et al. 2025</a>):
+            finer and tuned to field evidence, but only for Switzerland and 37 to 7&nbsp;ka, and published as a
+            visualisation rather than as scientific results. Flow, erosion and debris views and the click
+            tools keep using the whole-Alps model.
             Zoom out for the ice sheet over northern Europe. It is not part of the simulation: flat outlines
             from geological reconstructions, every thousand years from 25 to 10&nbsp;ka
             (<a href="https://doi.org/10.1111/bor.12142" target="_blank" rel="noopener">DATED-1, Hughes et al. 2016</a>),
@@ -51,6 +58,13 @@
             faded into each other in between.
           </p>
           <label><input type="checkbox" id="ice-visible" checked /> Show ice</label>
+          <label class="range">Ice model
+            <select id="ice-model">
+              <option value="alps">Whole Alps, 1 km grid</option>
+              <option value="swiss">Switzerland, 500 m grid (37–7 ka)</option>
+            </select>
+          </label>
+          <p class="note" id="ice-model-note" hidden></p>
           <label><input type="checkbox" id="context-ice" checked /> Northern ice sheet <output id="context-info"></output></label>
           <label><input type="checkbox" id="contour-labels" checked /> Contour heights (m)</label>
           <label><input type="checkbox" id="particles" /> Flow particles</label>

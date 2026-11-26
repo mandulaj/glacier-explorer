@@ -101,7 +101,6 @@ void main() {
 }`;
 
 export class IceLayer implements CustomLayerInterface {
-  readonly id = "ice";
   readonly type = "custom" as const;
   readonly renderingMode = "3d" as const;
 
@@ -145,7 +144,14 @@ export class IceLayer implements CustomLayerInterface {
   private iceTextures!: TextureCache<Float32Array>;
   private flowTextures!: TextureCache<Uint8Array>;
 
-  constructor(private manifest: Manifest) {
+  /** where another ice model is shown instead: nonzero cells of the grid are left empty */
+  private hole: Uint8Array | null = null;
+  private holed = new Map<Float32Array, Float32Array>();
+
+  constructor(
+    private manifest: Manifest,
+    readonly id = "ice",
+  ) {
     const { width, height, ice, flow } = manifest;
     const repaint = () => {
       this.map?.triggerRepaint();
@@ -153,8 +159,33 @@ export class IceLayer implements CustomLayerInterface {
     };
     const load = (file: string) => fetchRaster(file, width, height, ice);
     this.iceFrames = new FrameSet(manifest.frames, load, repaint);
-    this.coarseFrames = new FrameSet(manifest.frames.filter((f) => Number.isInteger(f.age)), load, repaint);
+    this.coarseFrames = new FrameSet(manifest.frames.filter((f) => Math.abs(f.age - Math.round(f.age)) < 0.06), load, repaint);
     this.flowFrames = flow ? new FrameSet(flow.frames, fetchBytes, repaint) : null;
+  }
+
+  /** Leave part of the domain empty (or null: none), where another model's ice is drawn. Point queries are not affected. */
+  setHole(mask: Uint8Array | null) {
+    if (mask === this.hole) return;
+    this.hole = mask;
+    this.holed.clear();
+    this.iceTextures?.dispose();
+    this.coarseTextures?.dispose();
+    this.map?.triggerRepaint();
+  }
+
+  /** A frame as it is drawn: with the hole cut out. */
+  private cut(frame: Float32Array): Float32Array {
+    const hole = this.hole;
+    if (!hole) return frame;
+    let out = this.holed.get(frame);
+    if (!out) {
+      out = new Float32Array(frame);
+      for (let i = 0; i < out.length; i++) if (hole[i]) out[i] = -1000;
+      // only the frames on screen are needed more than once
+      if (this.holed.size >= 4) this.holed.delete(this.holed.keys().next().value!);
+      this.holed.set(frame, out);
+    }
+    return out;
   }
 
   setDebris(data: DebrisData) {
@@ -364,8 +395,8 @@ export class IceLayer implements CustomLayerInterface {
       bounds: this.manifest.mercatorBounds,
       exaggeration: this.exaggeration,
       bed: this.bedTexture,
-      ice0: iceTextures.get(ice.i0, ice.a),
-      ice1: iceTextures.get(ice.i1, ice.b),
+      ice0: iceTextures.get(ice.i0, this.cut(ice.a)),
+      ice1: iceTextures.get(ice.i1, this.cut(ice.b)),
       mix: ice.mix,
       flow0: flow ? this.flowTextures.get(flow.i0, flow.a) : null,
       flow1: flow ? this.flowTextures.get(flow.i1, flow.b) : null,
@@ -405,8 +436,8 @@ export class IceLayer implements CustomLayerInterface {
     if (this.showContourLabels && this.labels && this.bedData) {
       this.labels.draw({
         bed: this.bedData,
-        a: ice.a,
-        b: ice.b,
+        a: this.cut(ice.a),
+        b: this.cut(ice.b),
         mix: ice.mix,
         width: this.manifest.width,
         height: this.manifest.height,

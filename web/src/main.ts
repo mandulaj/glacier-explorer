@@ -4,7 +4,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import "./app.css";
 import { ContextIce, type ContextData } from "./context";
 import { DEGLACIATION_RANGE, EROSION_RANGE, RAMPS, rampCss, type IceMode } from "./colormaps";
-import { fetchJson, type Manifest, type TimeSeries } from "./data";
+import { fetchBytes, fetchJson, type Manifest, type TimeSeries } from "./data";
 import { loadDebris } from "./debris";
 import { DrapedLayer } from "./draped";
 import { IceLayer } from "./iceLayer";
@@ -38,12 +38,13 @@ function ageToUrl(age: number) {
 maplibregl.setWorkerUrl(workerUrl);
 
 async function main() {
-  const [manifest, series, terrain, seaLevel, contextData] = await Promise.all([
+  const [manifest, series, terrain, seaLevel, contextData, swissManifest] = await Promise.all([
     fetchJson<Manifest>("manifest.json"),
     fetchJson<TimeSeries>("timeseries.json"),
     installSeabed(),
     fetchJson<SeaLevelCurve>("sealevel.json").catch(() => null),
     fetchJson<ContextData>("context.json").catch(() => null),
+    fetchJson<Manifest>("stm/manifest.json").catch(() => null),
   ]);
 
   const map = new maplibregl.Map({
@@ -70,6 +71,36 @@ async function main() {
   const ground: Partial<Record<IceMode, DrapedLayer>> = {};
   let inspector: Inspector | null = null;
   let context: ContextIce | null = null;
+
+  // Second ice model: finer, but only for Switzerland and part of the time. Where and when it
+  // exists it is drawn in place of the main model, which gets a hole there.
+  const swiss = swissManifest ? new IceLayer(swissManifest, "ice-swiss") : null;
+  const modelSelect = document.getElementById("ice-model") as HTMLSelectElement;
+  const modelNote = document.getElementById("ice-model-note")!;
+  modelSelect.closest("label")!.hidden = !swiss;
+  let swissHole: Uint8Array | null = null;
+  const updateModel = (age: number) => {
+    if (!swiss || !swissManifest) return;
+    const frames = swissManifest.frames;
+    const [oldest, youngest] = [frames[0].age, frames[frames.length - 1].age];
+    const chosen = modelSelect.value === "swiss";
+    const active = chosen && age <= oldest && age >= youngest;
+    swiss.visible = active && ice.visible;
+    swiss.opacity = ice.opacity;
+    swiss.exaggeration = ice.exaggeration;
+    swiss.showContourLabels = ice.showContourLabels;
+    swiss.mode = ice.mode === "erosion" || ice.mode === "deglaciation" ? ice.mode : "plain";
+    ice.setHole(active ? swissHole : null);
+    modelNote.hidden = !chosen || active;
+    modelNote.textContent = `Covers ${oldest.toFixed(0)} to ${youngest.toFixed(0)} ka only: showing the whole-Alps model.`;
+    if (chosen && !swissHole && swissManifest.hole) {
+      fetchBytes(swissManifest.hole).then((mask) => {
+        swissHole = mask;
+        updateModel(timebar.age);
+      });
+    }
+    map.triggerRepaint();
+  };
   const contextBox = document.getElementById("context-ice") as HTMLInputElement;
   const contextReadout = document.getElementById("context-info")!;
   contextBox.closest("label")!.hidden = !contextData;
@@ -82,6 +113,8 @@ async function main() {
   const timebar = new TimeBar(maxAge, series, Math.min(Math.max(ageFromUrl() ?? INITIAL_AGE, 0), maxAge), (age) => {
     ageToUrl(age);
     ice.setAge(age);
+    if (swiss && modelSelect.value === "swiss") swiss.setAge(age);
+    updateModel(age);
     ground.erosion?.setAge(age);
     inspector?.setAge(age);
     updateContext(age);
@@ -105,6 +138,18 @@ async function main() {
     }
     map.addLayer(ice, FIRST_LABEL_LAYER);
     ice.setAge(timebar.age);
+    if (swiss) {
+      map.addLayer(swiss, FIRST_LABEL_LAYER);
+      swiss.visible = false;
+      // every menu control that changes the ice applies to both models
+      const sync = () => {
+        if (modelSelect.value === "swiss") swiss.setAge(timebar.age);
+        updateModel(timebar.age);
+      };
+      document.getElementById("menu")!.addEventListener("input", sync);
+      document.getElementById("menu")!.addEventListener("change", sync);
+      sync();
+    }
     if (contextData) {
       // draped outlines above lakes and rivers, the sheet on the water above the sea but below the Alpine ice
       context = new ContextIce(map, contextData, "coast", ice.id);

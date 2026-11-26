@@ -22,6 +22,8 @@ export interface Manifest {
   bed: Encoding & { file: string };
   ice: Encoding & { marginSlope: number };
   frames: Frame[];
+  /** only for a second model: uint8 mask on the main grid of where it replaces the main model */
+  hole?: string;
   /** RGBA8 frames: surface velocity east / north (signed log), basal speed (log), basal temperature */
   flow?: { vmax: number; tempStep: number; frames: FrameRef[] };
   /** log10 of cumulative erosion potential in metres */
