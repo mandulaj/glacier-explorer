@@ -9,6 +9,8 @@ ground against its bed, and where it carried and dropped rock debris.
 - **3D terrain** of the whole Alps at up to sub-metre resolution, with adjustable relief shading
   (turn it down to zero for a plain black-and-white map).
 - **Time slider** in 100-year steps with play / pause and the modelled ice volume as backdrop.
+  Named periods (marine isotope stages) and events such as the Last Glacial Maximum, the Younger
+  Dryas or Ötzi mark the way. View and time are kept in the URL, so any state can be shared as a link.
 - **Ice infill**: a semi-transparent ice surface cut against the real terrain, so valleys fill from
   wall to wall and peaks stand out as nunataks. Contour lines every 100 m with elevation numbers.
 - **Colour the ice by** surface speed, basal sliding (grinding), or frozen versus sliding bed.

@@ -13,6 +13,23 @@ import { TimeBar } from "./timebar";
 
 const INITIAL_AGE = 24;
 
+/** The time is kept in the URL next to MapLibre's own `map=` entry: #map=9/46.7/8.9/0/60&t=24.5 */
+function ageFromUrl(): number | null {
+  const entry = location.hash.slice(1).split("&").find((part) => part.startsWith("t="));
+  const age = entry ? Number(entry.slice(2)) : NaN;
+  return Number.isFinite(age) ? age : null;
+}
+
+let urlTimer = 0;
+function ageToUrl(age: number) {
+  clearTimeout(urlTimer);
+  urlTimer = window.setTimeout(() => {
+    const parts = location.hash.slice(1).split("&").filter((part) => part && !part.startsWith("t="));
+    parts.push(`t=${age.toFixed(1)}`);
+    history.replaceState(history.state, "", `#${parts.join("&")}`);
+  }, 250);
+}
+
 // under a bundler the worker location cannot be derived automatically
 maplibregl.setWorkerUrl(workerUrl);
 
@@ -32,7 +49,7 @@ async function main() {
     maxPitch: 85,
     minZoom: 5,
     maxZoom: 14.5,
-    hash: true,
+    hash: "map",
     attributionControl: { compact: true },
   });
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
@@ -42,7 +59,8 @@ async function main() {
   const maxAge = manifest.frames[0].age;
   let erosion: ErosionLayer | null = null;
   let depositStep = NaN;
-  const timebar = new TimeBar(maxAge, series, INITIAL_AGE, (age) => {
+  const timebar = new TimeBar(maxAge, series, Math.min(Math.max(ageFromUrl() ?? INITIAL_AGE, 0), maxAge), (age) => {
+    ageToUrl(age);
     ice.setAge(age);
     erosion?.setAge(age);
     // deposits appear once their time has come; refilter only every 100 years

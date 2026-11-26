@@ -57,7 +57,7 @@ body,
 
 #menu-body {
   padding: 0 14px 12px;
-  max-height: calc(100vh - 270px);
+  max-height: calc(100vh - 290px);
   overflow-y: auto;
 }
 
@@ -131,7 +131,7 @@ label.range input {
 
 #readout {
   flex: none;
-  width: 92px;
+  width: 128px;
   line-height: 1.15;
 }
 
@@ -149,15 +149,15 @@ label.range input {
 #track {
   position: relative;
   flex: 1;
-  height: 62px;
+  height: 80px;
   min-width: 0;
 }
 
 #curve {
   position: absolute;
-  inset: 0 0 18px 0;
+  inset: 16px 0 18px 0;
   width: 100%;
-  height: calc(100% - 18px);
+  height: calc(100% - 34px);
 }
 
 #time {
@@ -228,7 +228,7 @@ label.range input {
 
 @media (max-width: 640px) {
   #readout {
-    width: 70px;
+    width: 84px;
   }
   #speed {
     display: none;
@@ -249,7 +249,7 @@ label.range select {
 #legend {
   position: absolute;
   left: 12px;
-  bottom: 124px;
+  bottom: 142px;
   width: 230px;
   box-sizing: border-box;
   padding: 8px 14px 6px;
@@ -345,4 +345,106 @@ kbd {
 #look.active {
   background: var(--accent);
   color: white;
+}
+
+#age-sub,
+#age-period {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#age-period {
+  color: var(--ink);
+}
+
+/* named periods along the top of the time slider */
+#periods {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 14px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+#periods span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  padding: 0 3px;
+  border-right: 1px solid rgba(255, 255, 255, 0.9);
+  font-size: 9.5px;
+  line-height: 14px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  color: #1d2f40;
+}
+
+/* event markers: small pins that sit above the slider and take the pointer */
+#events {
+  position: absolute;
+  inset: 16px 0 18px 0;
+  pointer-events: none;
+}
+
+#events button {
+  position: absolute;
+  top: -3px;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+#events button::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 6px;
+  height: 6px;
+  border: 1.5px solid white;
+  border-radius: 50%;
+  background: #33414d;
+}
+
+#events button.active::before,
+#events button:hover::before,
+#events button:focus-visible::before {
+  background: #d1342f;
+  transform: scale(1.35);
+}
+
+#event-tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  width: 230px;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(29, 36, 40, 0.94);
+  color: white;
+  font-size: 11.5px;
+  line-height: 1.35;
+  pointer-events: none;
+  z-index: 3;
+}
+
+#event-tip strong {
+  display: block;
+  font-size: 12.5px;
+}
+
+#event-tip em {
+  font-style: normal;
+  opacity: 0.7;
 }

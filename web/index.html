@@ -64,10 +64,17 @@
 
     <footer id="timebar">
       <button id="play" aria-label="Play">▶</button>
-      <div id="readout"><strong id="age-label">24.0 ka</strong><span id="age-sub">years ago</span></div>
+      <div id="readout">
+        <strong id="age-label">24.0 ka</strong>
+        <span id="age-sub">years ago</span>
+        <span id="age-period"></span>
+      </div>
       <div id="track">
+        <div id="periods"></div>
         <canvas id="curve"></canvas>
         <input type="range" id="time" min="0" max="119" step="0.05" value="95" aria-label="Time" />
+        <div id="events"></div>
+        <div id="event-tip" hidden></div>
         <div id="ticks"></div>
       </div>
       <select id="speed" aria-label="Playback speed">

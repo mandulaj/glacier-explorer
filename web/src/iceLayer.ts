@@ -1,4 +1,4 @@
-import type { CustomLayerInterface, CustomRenderMethodInput, Map as MlMap } from "maplibre-gl";
+import { MercatorCoordinate, type CustomLayerInterface, type CustomRenderMethodInput, type Map as MlMap } from "maplibre-gl";
 import { ContourLabels } from "./contourLabels";
 import { RAMPS, rampTable, type IceMode } from "./colormaps";
 import { DebrisPaths, type DebrisData } from "./debris";
@@ -360,6 +360,7 @@ export class IceLayer implements CustomLayerInterface {
         bounds: this.manifest.mercatorBounds,
         exaggeration: this.exaggeration,
         view: this.viewRect(),
+        terrain: (mx, my) => this.map.queryTerrainElevation(new MercatorCoordinate(mx, my).toLngLat()),
       });
     }
 

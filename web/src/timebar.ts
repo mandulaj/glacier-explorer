@@ -1,4 +1,5 @@
 import type { TimeSeries } from "./data";
+import { EVENTS, periodAt, PERIODS, type TimelineEvent } from "./timeline";
 
 /** Bottom time slider: old (left) to present (right), ice-volume curve as backdrop. */
 export class TimeBar {
@@ -7,6 +8,10 @@ export class TimeBar {
   private speed = document.getElementById("speed") as HTMLSelectElement;
   private label = document.getElementById("age-label")!;
   private sub = document.getElementById("age-sub")!;
+  private period = document.getElementById("age-period")!;
+  private tip = document.getElementById("event-tip")!;
+  private markers: { event: TimelineEvent; button: HTMLButtonElement }[] = [];
+  private hovered: TimelineEvent | null = null;
   private canvas = document.getElementById("curve") as HTMLCanvasElement;
   private playing = false;
   private last = 0;
@@ -27,6 +32,7 @@ export class TimeBar {
     });
     new ResizeObserver(() => this.drawCurve()).observe(this.canvas);
     this.drawTicks();
+    this.buildTimeline();
     this.emit();
   }
 
@@ -43,6 +49,10 @@ export class TimeBar {
     const age = this.age;
     this.label.textContent = age < 0.05 ? "Present" : `${age.toFixed(1)} ka`;
     this.sub.textContent = age < 0.05 ? "model state" : `${Math.round(age * 1000).toLocaleString("en")} years ago`;
+    const period = periodAt(age);
+    this.period.textContent = period?.name ?? "";
+    this.period.title = period?.name ?? "";
+    this.updateTip();
     this.onChange(age);
   }
 
@@ -69,6 +79,63 @@ export class TimeBar {
     }
     this.age = next;
     requestAnimationFrame((t) => this.tick(t));
+  }
+
+  /** Period bands along the top and clickable event markers. */
+  private buildTimeline() {
+    const left = (age: number) => (1 - Math.min(age, this.maxAge) / this.maxAge) * 100;
+    const periods = document.getElementById("periods")!;
+    for (const p of PERIODS) {
+      const span = document.createElement("span");
+      const width = left(p.to) - left(p.from);
+      span.style.left = `${left(p.from)}%`;
+      span.style.width = `${width}%`;
+      span.style.background = p.color;
+      span.textContent = width > 22 ? p.name : width > 4 ? p.short : "";
+      span.title = `${p.name}: ${p.from} to ${p.to} ka`;
+      periods.append(span);
+    }
+
+    const events = document.getElementById("events")!;
+    for (const event of EVENTS) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.style.left = `${left(event.age)}%`;
+      button.setAttribute("aria-label", `${event.title}, ${event.age} thousand years ago`);
+      button.addEventListener("click", () => (this.age = event.age));
+      const hover = (on: boolean) => () => {
+        this.hovered = on ? event : null;
+        this.updateTip();
+      };
+      button.addEventListener("pointerenter", hover(true));
+      button.addEventListener("pointerleave", hover(false));
+      button.addEventListener("focus", hover(true));
+      button.addEventListener("blur", hover(false));
+      events.append(button);
+      this.markers.push({ event, button });
+    }
+  }
+
+  /** Show the hovered event, or the one the slider is passing. */
+  private updateTip() {
+    const age = this.age;
+    const near = this.markers.reduce<TimelineEvent | null>(
+      (best, m) => (Math.abs(m.event.age - age) < 0.6 && (!best || Math.abs(m.event.age - age) < Math.abs(best.age - age)) ? m.event : best),
+      null,
+    );
+    const shown = this.hovered ?? near;
+    for (const m of this.markers) m.button.classList.toggle("active", m.event === shown);
+    this.tip.hidden = !shown;
+    if (!shown) return;
+    const title = document.createElement("strong");
+    title.textContent = shown.title;
+    const when = document.createElement("em");
+    when.textContent = `about ${(shown.age * 1000).toLocaleString("en")} years ago`;
+    this.tip.replaceChildren(title, when, document.createElement("br"), shown.detail);
+    // keep the bubble inside the track
+    const track = this.tip.parentElement!.clientWidth;
+    const x = (1 - shown.age / this.maxAge) * track;
+    this.tip.style.left = `${Math.min(Math.max(x - 115, 0), Math.max(track - 230, 0))}px`;
   }
 
   private drawTicks() {

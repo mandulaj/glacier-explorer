@@ -24,6 +24,8 @@ export interface LabelInput {
   exaggeration: number;
   /** uv rectangle on screen */
   view: [number, number, number, number];
+  /** terrain elevation (m) at a mercator position, null if unknown */
+  terrain: (mx: number, my: number) => number | null;
 }
 
 const MIN_SPACING = 85; // CSS px between labels
@@ -88,6 +90,9 @@ export class ContourLabels {
       const sy = (1 - (m[1] * u + m[5] * v + m[9] * z + m[13]) / cw) * 0.5 * cssH;
       if (sx < 20 || sx > cssW - 20 || sy < 20 || sy > cssH - 20) return;
       for (const [qx, qy] of placed) if (Math.hypot(qx - sx, qy - sy) < MIN_SPACING) return;
+      // the 1 km model has ice here, but the real terrain may stand above it (ridges, valley walls)
+      const ground = input.terrain(bounds[0] + u * (bounds[2] - bounds[0]), my);
+      if (ground !== null && ground > level * input.exaggeration + 20) return;
       placed.push([sx, sy]);
       const text = String(level);
       ctx.strokeText(text, sx, sy);
