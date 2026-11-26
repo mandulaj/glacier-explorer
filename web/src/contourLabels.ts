@@ -28,7 +28,7 @@ export interface LabelInput {
   terrain: (mx: number, my: number) => number | null;
 }
 
-const MIN_SPACING = 85; // CSS px between labels
+const MIN_SPACING = 120; // CSS px between labels
 
 export class ContourLabels {
   readonly canvas = document.createElement("canvas");
@@ -71,32 +71,55 @@ export class ContourLabels {
 
     const thk = (i: number) => a[i] + (b[i] - a[i]) * mix;
     const placed: [number, number][] = [];
-    ctx.font = "600 11px system-ui, sans-serif";
+    ctx.font = "9.5px system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.lineJoin = "round";
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = "rgba(255,255,255,0.85)";
-    ctx.fillStyle = "#1c4468";
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = "rgba(240,247,253,0.9)"; // ice colour, so the number interrupts its contour line
+    ctx.fillStyle = "#44627d";
 
-    const place = (px: number, py: number, level: number) => {
+    const surface = (i: number) => bed[i] + thk(i);
+    /** Screen position (CSS px) of a grid position at a given elevation, or null behind the camera. */
+    const project = (px: number, py: number, level: number): [number, number] | null => {
       const u = (px + 0.5) / W;
       const v = (py + 0.5) / H;
       const my = bounds[1] + v * (bounds[3] - bounds[1]);
       const z = (level * input.exaggeration * Math.cosh(Math.PI * (1 - 2 * my))) / EARTH_CIRCUMFERENCE;
       const cw = m[3] * u + m[7] * v + m[11] * z + m[15];
-      if (cw <= 0) return;
-      const sx = ((m[0] * u + m[4] * v + m[8] * z + m[12]) / cw + 1) * 0.5 * cssW;
-      const sy = (1 - (m[1] * u + m[5] * v + m[9] * z + m[13]) / cw) * 0.5 * cssH;
+      if (cw <= 0) return null;
+      return [((m[0] * u + m[4] * v + m[8] * z + m[12]) / cw + 1) * 0.5 * cssW, (1 - (m[1] * u + m[5] * v + m[9] * z + m[13]) / cw) * 0.5 * cssH];
+    };
+
+    const place = (px: number, py: number, level: number) => {
+      const at = project(px, py, level);
+      if (!at) return;
+      const [sx, sy] = at;
       if (sx < 20 || sx > cssW - 20 || sy < 20 || sy > cssH - 20) return;
       for (const [qx, qy] of placed) if (Math.hypot(qx - sx, qy - sy) < MIN_SPACING) return;
       // the 1 km model has ice here, but the real terrain may stand above it (ridges, valley walls)
-      const ground = input.terrain(bounds[0] + u * (bounds[2] - bounds[0]), my);
+      const ground = input.terrain(bounds[0] + ((px + 0.5) / W) * (bounds[2] - bounds[0]), bounds[1] + ((py + 0.5) / H) * (bounds[3] - bounds[1]));
       if (ground !== null && ground > level * input.exaggeration + 20) return;
+
+      // the contour runs across the slope: turn the number along it, as on a topographic map
+      const i = Math.round(py) * W + Math.round(px);
+      const gx = surface(i + 1) - surface(i - 1);
+      const gy = surface(i + W) - surface(i - W);
+      const g = Math.hypot(gx, gy) || 1;
+      const p0 = project(px + (gy / g) * 1.5, py - (gx / g) * 1.5, level);
+      const p1 = project(px - (gy / g) * 1.5, py + (gx / g) * 1.5, level);
+      let angle = p0 && p1 ? Math.atan2(p1[1] - p0[1], p1[0] - p0[0]) : 0;
+      if (angle > Math.PI / 2) angle -= Math.PI; // keep the text upright
+      if (angle < -Math.PI / 2) angle += Math.PI;
+
       placed.push([sx, sy]);
       const text = String(level);
-      ctx.strokeText(text, sx, sy);
-      ctx.fillText(text, sx, sy);
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(angle);
+      ctx.strokeText(text, 0, 0);
+      ctx.fillText(text, 0, 0);
+      ctx.restore();
     };
 
     /** Walk along a lattice line and report contour crossings between neighbouring pixels. */

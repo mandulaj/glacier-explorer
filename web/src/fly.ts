@@ -1,8 +1,9 @@
 import { MercatorCoordinate, type Map as MlMap } from "maplibre-gl";
 
 /**
- * Game-style flying: W / S forward and back, A / D sideways, Space up,
- * Shift down, speed scaling with height above ground. F (or the menu button)
+ * Game-style flying: W / S forward and back, A / D sideways, E or Space up,
+ * Q down (Shift is left alone: MapLibre uses it for box zoom and rotation),
+ * speed scaling with height above ground. F (or the menu button)
  * captures the mouse for looking around; Esc releases it.
  *
  * The camera pose is taken from the map when a flight starts and again after
@@ -10,7 +11,7 @@ import { MercatorCoordinate, type Map as MlMap } from "maplibre-gl";
  */
 
 const EARTH_CIRCUMFERENCE = 2 * Math.PI * 6378137;
-const MOVE_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "Space", "ShiftLeft", "ShiftRight"]);
+const MOVE_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "KeyE", "KeyQ", "Space"]);
 const MIN_CLEARANCE = 150; // metres above the terrain
 const LOOK_SPEED = 0.12; // degrees per pixel of mouse movement
 
@@ -71,14 +72,12 @@ export class FlyControls {
   private onKey(e: KeyboardEvent, down: boolean) {
     const target = e.target as HTMLElement;
     if (target.tagName === "SELECT" || target.tagName === "TEXTAREA" || (target.tagName === "INPUT" && (target as HTMLInputElement).type === "text")) return;
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (down && (e.ctrlKey || e.metaKey || e.altKey)) return;
     if (down && e.code === "KeyF" && !e.repeat) {
       this.toggleLook();
       return;
     }
     if (!MOVE_KEYS.has(e.code)) return;
-    // Shift alone must not hijack shift-drag etc.; it only counts while flying
-    if (e.code.startsWith("Shift") && down && this.keys.size === 0 && !this.looking) return;
     if (e.code === "Space") e.preventDefault();
     if (down) this.keys.add(e.code);
     else this.keys.delete(e.code);
@@ -136,7 +135,7 @@ export class FlyControls {
     const k = (code: string) => (this.keys.has(code) ? 1 : 0);
     const forward = k("KeyW") - k("KeyS");
     const right = k("KeyD") - k("KeyA");
-    const up = k("Space") - (k("ShiftLeft") || k("ShiftRight"));
+    const up = Math.max(k("Space"), k("KeyE")) - k("KeyQ");
     const turning = this.look.dx !== 0 || this.look.dy !== 0;
     if (!forward && !right && !up && !turning) {
       if (this.keys.size === 0 && !this.looking) return this.stop();

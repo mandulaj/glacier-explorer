@@ -26,7 +26,7 @@ ground against its bed, and where it carried and dropped rock debris.
 |---|---|
 | drag / scroll / right-drag | pan, zoom, rotate and tilt |
 | `W` `A` `S` `D` | fly forward, left, back, right |
-| `Space` / `Shift` | fly up / down |
+| `E` (or `Space`) / `Q` | fly up / down |
 | `F` | mouse look on / off (`Esc` also releases the mouse) |
 | `P` | play / pause time |
 
