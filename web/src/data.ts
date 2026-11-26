@@ -27,7 +27,18 @@ export interface Manifest {
   /** log10 of cumulative erosion potential in metres */
   erosion?: Encoding & { frames: FrameRef[] };
   /** debris trajectories, see pipeline/debris.py */
-  debris?: { file: string; frameYears: number; count: number; regions: { name: string; color: string }[] };
+  debris?: { file: string; frameYears: number; count: number; regions: Region[] };
+  /** uint8 [row, column, time] ice thickness / step, see pipeline/history.py */
+  history?: { file: string; width: number; height: number; ages: number[]; step: number };
+  /** age (ka) at which each place last became ice-free */
+  deglaciation?: Encoding & { frames: FrameRef[] };
+}
+
+export interface Region {
+  name: string;
+  color: string;
+  lon?: number;
+  lat?: number;
 }
 
 export interface FrameRef {

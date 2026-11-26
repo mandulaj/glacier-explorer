@@ -14,10 +14,10 @@ export interface SeaLevelCurve {
   source: string;
 }
 
-/** Area covered by the seabed tiles (pipeline/sea.py). */
-const LON: [number, number] = [2, 20];
-const LAT: [number, number] = [40, 50];
-const CELLS = 48;
+/** The seabed is global (see seabed.ts); the mesh covers the mercator world. */
+const LON: [number, number] = [-180, 180];
+const LAT: [number, number] = [-80, 80];
+const CELLS = 128;
 
 const mx = (lon: number) => (lon + 180) / 360;
 const my = (lat: number) => {
@@ -31,23 +31,18 @@ in vec2 a_uv;
 uniform mat4 u_matrix;
 uniform vec4 u_bounds;
 uniform float u_level;
-out vec2 v_uv;
 void main() {
   float y = mix(u_bounds.y, u_bounds.w, a_uv.y);
   float stretch = cosh(3.141592653589793 * (1.0 - 2.0 * y));
   gl_Position = u_matrix * vec4(a_uv, u_level * stretch / ${EARTH_CIRCUMFERENCE.toFixed(1)}, 1.0);
-  v_uv = a_uv;
 }`;
 
 const FRAG = `#version 300 es
 precision highp float;
 uniform float u_opacity;
-in vec2 v_uv;
 out vec4 fragColor;
 void main() {
-  // fade out towards the edge of the area that has seabed data
-  vec2 edge = min(v_uv, 1.0 - v_uv);
-  float alpha = u_opacity * smoothstep(0.0, 0.02, min(edge.x, edge.y));
+  float alpha = u_opacity;
   fragColor = vec4(vec3(0.27, 0.50, 0.68) * alpha, alpha);
 }`;
 
@@ -89,7 +84,7 @@ export class SeaLayer implements CustomLayerInterface {
     this.uniforms = uniformLocations(gl, this.program);
     const uv = new Float32Array((CELLS + 1) * (CELLS + 1) * 2);
     for (let j = 0, k = 0; j <= CELLS; j++) for (let i = 0; i <= CELLS; i++) uv.set([i / CELLS, j / CELLS], 2 * k++);
-    const index = new Uint16Array(CELLS * CELLS * 6);
+    const index = new Uint32Array(CELLS * CELLS * 6);
     for (let j = 0, k = 0; j < CELLS; j++) {
       for (let i = 0; i < CELLS; i++, k += 6) {
         const a = j * (CELLS + 1) + i;
@@ -141,7 +136,7 @@ export class SeaLayer implements CustomLayerInterface {
     gl.depthMask(false);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_SHORT, 0);
+    gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_INT, 0);
     gl.depthMask(true);
     gl.bindVertexArray(null);
   }

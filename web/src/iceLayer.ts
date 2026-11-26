@@ -5,6 +5,7 @@ import { DebrisPaths, type DebrisData } from "./debris";
 import { fetchBytes, fetchRaster, type Manifest } from "./data";
 import { FrameSet, TextureCache } from "./frames";
 import { Particles } from "./particles";
+import { PathLines } from "./pathLines";
 import { bindSurface, createProgram, EARTH_CIRCUMFERENCE, FLOW_GLSL, SURFACE_GLSL, uniformLocations, type SurfaceState } from "./surface";
 
 /**
@@ -21,7 +22,9 @@ import { bindSurface, createProgram, EARTH_CIRCUMFERENCE, FLOW_GLSL, SURFACE_GLS
 const FINE_MAX_RATE = 1.5; // ka / s; above this only the 1 ka frames are used
 const MESH_STEP = 2; // mesh cell = 2 data pixels (~1.5 km); the modelled surface is smooth
 
-const MODE_INDEX: Record<IceMode, number> = { plain: 0, speed: 1, sliding: 2, temperature: 3, erosion: 0 };
+const MODE_INDEX: Record<IceMode, number> = { plain: 0, speed: 1, sliding: 2, temperature: 3, erosion: 0, deglaciation: 0 };
+/** modes that colour the ground: the ice is drawn faint so the ground shows through */
+const GROUND_MODES: IceMode[] = ["erosion", "deglaciation"];
 
 const VERT = `#version 300 es
 precision highp float;
@@ -123,6 +126,10 @@ export class IceLayer implements CustomLayerInterface {
   private particles: Particles | null = null;
   private debris: DebrisPaths | null = null;
   private debrisData: DebrisData | null = null;
+  private traces: PathLines | null = null;
+  private pendingTraces: Parameters<PathLines["set"]>[0] | null = null;
+  /** frames last drawn, for point queries */
+  private drawn: { a: Float32Array; b: Float32Array; mix: number } | null = null;
 
   private age = 24;
   /** every frame (100-year steps when built that way) and the 1 ka subset used while time moves fast */
@@ -147,6 +154,42 @@ export class IceLayer implements CustomLayerInterface {
   setDebris(data: DebrisData) {
     this.debrisData = data;
     this.map?.triggerRepaint();
+  }
+
+  /** Lines to draw on the ice surface (flow traces); an empty list removes them. */
+  setTraces(paths: Parameters<PathLines["set"]>[0]) {
+    this.pendingTraces = paths;
+    this.map?.triggerRepaint();
+  }
+
+  /** Modelled ice at a position in domain uv, as currently displayed. Null outside the domain or before data has loaded. */
+  sample(u: number, v: number): { bed: number; thickness: number; surface: number } | null {
+    const d = this.drawn;
+    if (!d || !this.bedData || u < 0 || u > 1 || v < 0 || v > 1) return null;
+    const { width: W, height: H } = this.manifest;
+    const fx = Math.min(Math.max(u * W - 0.5, 0), W - 1.001);
+    const fy = Math.min(Math.max(v * H - 0.5, 0), H - 1.001);
+    const x = Math.floor(fx);
+    const y = Math.floor(fy);
+    const wx = fx - x;
+    const wy = fy - y;
+    const i = y * W + x;
+    const lerp = (f: (k: number) => number) => (f(i) * (1 - wx) + f(i + 1) * wx) * (1 - wy) + (f(i + W) * (1 - wx) + f(i + W + 1) * wx) * wy;
+    const bed = lerp((k) => this.bedData![k]);
+    const thickness = lerp((k) => d.a[k] + (d.b[k] - d.a[k]) * d.mix);
+    return { bed, thickness, surface: bed + thickness };
+  }
+
+  /** Flow frames around the current time, loading them if needed. */
+  async flowNow(): Promise<{ a: Uint8Array; b: Uint8Array; mix: number } | null> {
+    if (!this.flowFrames) return null;
+    for (let tries = 0; tries < 100; tries++) {
+      const pair = this.flowFrames.peek(this.age);
+      if (pair) return pair;
+      this.flowFrames.request(this.age);
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return null;
   }
 
   get hasFlow() {
@@ -258,6 +301,8 @@ export class IceLayer implements CustomLayerInterface {
     this.labels?.canvas.remove();
     this.debris?.dispose();
     this.debris = null;
+    this.traces?.dispose();
+    this.traces = null;
     for (const tex of this.luts.values()) gl.deleteTexture(tex);
     gl.deleteTexture(this.bedTexture);
     gl.deleteProgram(this.program);
@@ -290,6 +335,7 @@ export class IceLayer implements CustomLayerInterface {
     const ice = fine ?? this.coarseFrames.pair(this.age);
     if (!ice) return;
     const iceTextures = fine ? this.iceTextures : this.coarseTextures;
+    this.drawn = ice;
     if (!fine && performance.now() - this.lastChange > 250) this.iceFrames.request(this.age); // time has settled
     const flow = this.needsFlow ? this.flowFrames!.pair(this.age) : null;
 
@@ -322,7 +368,7 @@ export class IceLayer implements CustomLayerInterface {
     const u = this.uniforms;
     gl.useProgram(this.program);
     bindSurface(gl, u, state);
-    gl.uniform1f(u.u_opacity, this.mode === "erosion" ? this.opacity * 0.35 : this.opacity);
+    gl.uniform1f(u.u_opacity, GROUND_MODES.includes(this.mode) ? this.opacity * 0.35 : this.opacity);
     gl.uniform1i(u.u_mode, mode);
     gl.uniform2f(u.u_texel, 1 / this.manifest.width, 1 / this.manifest.height);
     gl.activeTexture(gl.TEXTURE5);
@@ -363,6 +409,13 @@ export class IceLayer implements CustomLayerInterface {
         terrain: (mx, my) => this.map.queryTerrainElevation(new MercatorCoordinate(mx, my).toLngLat()),
       });
     }
+
+    if (this.pendingTraces) {
+      this.traces ??= new PathLines(gl);
+      this.traces.set(this.pendingTraces);
+      this.pendingTraces = null;
+    }
+    this.traces?.render(gl, state);
 
     if (this.showDebris && this.debrisData) {
       this.debris ??= new DebrisPaths(gl, this.debrisData, this.manifest.debris!.regions.map((r) => r.color));

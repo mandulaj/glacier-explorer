@@ -473,3 +473,128 @@ kbd {
   font-style: normal;
   opacity: 0.7;
 }
+
+/* click-to-inspect popup */
+.maplibregl-popup-content {
+  padding: 10px 12px 10px;
+  border-radius: 10px;
+  font: 12px/1.4 system-ui, sans-serif;
+  color: var(--ink);
+}
+
+.inspect p {
+  margin: 4px 0;
+}
+
+.inspect-chart {
+  display: block;
+  width: 240px;
+  height: 75px;
+  margin: 6px 0;
+}
+
+.inspect-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.inspect-buttons button {
+  flex: 1;
+  padding: 5px 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  font: inherit;
+  cursor: pointer;
+}
+
+.inspect-buttons button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.inspect-trace {
+  color: var(--muted);
+}
+
+.inspect-trace:empty {
+  display: none;
+}
+
+.inspect-trace i {
+  display: inline-block;
+  width: 14px;
+  height: 4px;
+  margin-right: 5px;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+
+#map-hint {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px 14px;
+  border-radius: 20px;
+  background: rgba(29, 36, 40, 0.92);
+  color: white;
+  font-size: 12.5px;
+  z-index: 3;
+}
+
+/* cross-section panel, above the time bar */
+#section {
+  position: absolute;
+  left: 254px;
+  right: 12px;
+  bottom: 142px;
+  background: var(--panel);
+  border-radius: 10px;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.25);
+  z-index: 2;
+}
+
+#section header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px 0 14px;
+  font-weight: 600;
+  font-size: 12.5px;
+}
+
+#section-close {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: none;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+#section-canvas {
+  display: block;
+  width: 100%;
+  height: 170px;
+}
+
+.section-marker {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid white;
+  background: #d1342f;
+  color: white;
+  font: 700 11px/20px system-ui, sans-serif;
+  text-align: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+@media (max-width: 640px) {
+  #section {
+    left: 12px;
+  }
+}

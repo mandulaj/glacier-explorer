@@ -168,7 +168,7 @@ def main():
     manifest["debris"] = {
         "file": "debris.bin",
         "frameYears": FRAME_YEARS,
-        "regions": [{"name": r[0], "color": r[3]} for r in REGIONS],
+        "regions": [{"name": r[0], "lon": r[1], "lat": r[2], "color": r[3]} for r in REGIONS],
         "count": kept,
     }
     manifest_path.write_text(json.dumps(manifest))

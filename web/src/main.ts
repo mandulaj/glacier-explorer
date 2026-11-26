@@ -2,11 +2,12 @@ import * as maplibregl from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./app.css";
-import { RAMPS, rampCss, type IceMode } from "./colormaps";
+import { DEGLACIATION_RANGE, EROSION_RANGE, RAMPS, rampCss, type IceMode } from "./colormaps";
 import { fetchJson, type Manifest, type TimeSeries } from "./data";
 import { loadDebris } from "./debris";
-import { ErosionLayer } from "./erosion";
+import { DrapedLayer } from "./draped";
 import { IceLayer } from "./iceLayer";
+import { Inspector } from "./inspect";
 import { FlyControls } from "./fly";
 import { backgroundColor, buildStyle, FIRST_LABEL_LAYER, GROUP_LAYERS, TERRAIN_SOURCE, type LabelGroup } from "./style";
 import { installSeabed } from "./seabed";
@@ -63,12 +64,15 @@ async function main() {
   const sea = terrain.hasSeabed ? new SeaLayer(seaLevel) : null;
   const seaReadout = document.getElementById("sea-level")!;
   const maxAge = manifest.frames[0].age;
-  let erosion: ErosionLayer | null = null;
+  /** ground overlays by ice mode */
+  const ground: Partial<Record<IceMode, DrapedLayer>> = {};
+  let inspector: Inspector | null = null;
   let depositStep = NaN;
   const timebar = new TimeBar(maxAge, series, Math.min(Math.max(ageFromUrl() ?? INITIAL_AGE, 0), maxAge), (age) => {
     ageToUrl(age);
     ice.setAge(age);
-    erosion?.setAge(age);
+    ground.erosion?.setAge(age);
+    inspector?.setAge(age);
     if (sea) {
       sea.setAge(age);
       const level = Math.round(sea.levelAt(age));
@@ -90,15 +94,28 @@ async function main() {
     map.addLayer(ice, FIRST_LABEL_LAYER);
     ice.setAge(timebar.age);
     if (manifest.erosion) {
-      erosion = new ErosionLayer(manifest);
-      map.addLayer(erosion, "water");
-      erosion.setAge(timebar.age);
+      ground.erosion = new DrapedLayer(manifest, { id: "erosion", frames: manifest.erosion.frames, encoding: manifest.erosion, ramp: RAMPS.erosion, range: EROSION_RANGE });
     }
-    bindIceModes(map, ice, () => erosion);
+    if (manifest.deglaciation) {
+      ground.deglaciation = new DrapedLayer(manifest, {
+        id: "deglaciation",
+        frames: manifest.deglaciation.frames,
+        encoding: manifest.deglaciation,
+        ramp: RAMPS.deglaciation,
+        range: DEGLACIATION_RANGE,
+      });
+    }
+    for (const layer of Object.values(ground)) {
+      map.addLayer(layer, "water");
+      layer.setAge(timebar.age);
+    }
+    bindIceModes(map, ice, ground);
+    inspector = new Inspector(map, ice, manifest);
+    inspector.setAge(timebar.age);
     if (manifest.debris) bindDebris(map, ice, manifest, () => timebar.age);
   });
 
-  bindMenu(map, ice, sea, () => erosion?.invalidate());
+  bindMenu(map, ice, sea, () => Object.values(ground)[0]?.invalidate());
   // handy for debugging and automated checks
   Object.assign(window, { map, ice, timebar });
 }
@@ -182,14 +199,14 @@ function bindMenu(map: maplibregl.Map, ice: IceLayer, sea: SeaLayer | null, redr
   });
 }
 
-function bindIceModes(map: maplibregl.Map, ice: IceLayer, erosion: () => ErosionLayer | null) {
+function bindIceModes(map: maplibregl.Map, ice: IceLayer, ground: Partial<Record<IceMode, DrapedLayer>>) {
   const select = document.getElementById("ice-mode") as HTMLSelectElement;
   const particles = document.getElementById("particles") as HTMLInputElement;
   const legend = document.getElementById("legend")!;
 
   for (const option of Array.from(select.options)) {
     const mode = option.value as IceMode;
-    option.disabled = mode === "erosion" ? !erosion() : mode !== "plain" && !ice.hasFlow;
+    option.disabled = mode === "erosion" || mode === "deglaciation" ? !ground[mode] : mode !== "plain" && !ice.hasFlow;
   }
   particles.disabled = !ice.hasFlow;
 
@@ -197,7 +214,7 @@ function bindIceModes(map: maplibregl.Map, ice: IceLayer, erosion: () => Erosion
     const mode = select.value as IceMode;
     ice.mode = mode;
     ice.showParticles = particles.checked;
-    erosion()?.setVisible(mode === "erosion");
+    for (const [key, layer] of Object.entries(ground)) layer.setVisible(key === mode);
     ice.setAge(ice.currentAge);
 
     legend.hidden = mode === "plain";

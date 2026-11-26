@@ -1,15 +1,25 @@
 import type { CustomLayerInterface, CustomTerrainRenderInput, Map as MlMap } from "maplibre-gl";
-import { EROSION_RANGE, RAMPS, rampTable } from "./colormaps";
-import { fetchRaster, type Manifest } from "./data";
+import { rampTable, type Ramp } from "./colormaps";
+import { fetchRaster, type Encoding, type FrameRef, type Manifest } from "./data";
 import { FrameSet, TextureCache } from "./frames";
 import { createProgram, uniformLocations } from "./surface";
 
 /**
- * Cumulative erosion potential at the glacier bed, draped on the terrain so
- * it stays visible after the ice has gone. Uses MapLibre's (experimental)
+ * A raster draped on the terrain, coloured through a ramp: cumulative erosion
+ * (time-dependent) or deglaciation age (static). Being on the ground, it stays
+ * visible where the ice has gone. Uses MapLibre's (experimental)
  * `renderToTerrainTile` hook: the layer is drawn into every terrain tile
  * texture, between the hillshade and the vector layers.
  */
+
+export interface DrapedConfig {
+  id: string;
+  frames: FrameRef[];
+  encoding: Encoding;
+  ramp: Ramp;
+  /** values mapped to the two ends of the ramp; below the low end the layer is transparent */
+  range: [number, number];
+}
 
 const VERT = `#version 300 es
 in vec2 a_pos;
@@ -42,8 +52,8 @@ void main() {
   fragColor = vec4(color * alpha, alpha);
 }`;
 
-export class ErosionLayer implements CustomLayerInterface {
-  readonly id = "erosion";
+export class DrapedLayer implements CustomLayerInterface {
+  readonly id: string;
   readonly type = "custom" as const;
   readonly renderingMode = "2d" as const;
   terrainTileRevision = 0;
@@ -58,9 +68,13 @@ export class ErosionLayer implements CustomLayerInterface {
   private visible = false;
   private age = 0;
 
-  constructor(private manifest: Manifest) {
-    const { width, height, erosion } = manifest;
-    this.frames = new FrameSet(erosion!.frames, (file) => fetchRaster(file, width, height, erosion!), () => this.invalidate());
+  constructor(
+    private manifest: Manifest,
+    private config: DrapedConfig,
+  ) {
+    const { width, height } = manifest;
+    this.id = config.id;
+    this.frames = new FrameSet(config.frames, (file) => fetchRaster(file, width, height, config.encoding), () => this.invalidate(), 6);
   }
 
   setVisible(visible: boolean) {
@@ -107,7 +121,7 @@ export class ErosionLayer implements CustomLayerInterface {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       return tex;
     };
-    this.lut = texture(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, rampTable(RAMPS.erosion), 256, 1);
+    this.lut = texture(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, rampTable(this.config.ramp), 256, 1);
     const { width, height } = this.manifest;
     this.textures = new TextureCache(gl, (d) => texture(gl.R32F, gl.RED, gl.FLOAT, d, width, height), 6);
   }
@@ -135,7 +149,7 @@ export class ErosionLayer implements CustomLayerInterface {
     gl.uniform4fv(u.u_bounds, this.manifest.mercatorBounds);
     gl.uniform1f(u.u_mix, pair.mix);
     gl.uniform1f(u.u_opacity, 0.9);
-    gl.uniform2fv(u.u_range, EROSION_RANGE);
+    gl.uniform2fv(u.u_range, this.config.range);
     [this.textures.get(pair.i0, pair.a), this.textures.get(pair.i1, pair.b), this.lut].forEach((tex, unit) => {
       gl.activeTexture(gl.TEXTURE0 + unit);
       gl.bindTexture(gl.TEXTURE_2D, tex);

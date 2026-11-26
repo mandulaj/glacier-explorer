@@ -18,6 +18,11 @@ ground against its bed, and where it carried and dropped rock debris.
 - **Flow particles** streaming over the ice surface.
 - **Debris transport**: paths of rock debris from 19 source massifs and the places where the ice
   dropped it (erratic boulders, moraines).
+- **Click any place** for its ice history: thickness through the whole cycle and since when it is
+  ice-free. From there, *Whose ice is this?* follows the flow upstream to its source massif and
+  downstream to the margin, and *Cross-section* draws terrain and ice along a line of your choice,
+  animated with the time slider.
+- **Ice-free since**: the ground coloured by its deglaciation age.
 - **Sea level**: the sea follows global mean sea level through time over a real 3D seabed, so the
   shallow northern Adriatic dries out during the glacial maximum (about 130 m lower).
 - **Labels**: borders, towns, summits with elevation, lakes and rivers.
@@ -41,8 +46,9 @@ ground against its bed, and where it carried and dropped rock debris.
   [Seguinot & Delaney (2021)](https://doi.org/10.5194/esurf-9-923-2021).
 - **Terrain**: [Mapterhorn](https://mapterhorn.com/attribution/) tiles built from open data of
   swisstopo, BEV, IGN, LDBV and others.
-- **Seabed**: [EMODnet Bathymetry](https://emodnet.ec.europa.eu/en/bathymetry), merged into the
-  terrain tiles in the browser only where those are at sea level (land keeps full resolution).
+- **Seabed**: [EMODnet Bathymetry](https://emodnet.ec.europa.eu/en/bathymetry) around the Alps and
+  the global [Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) (Mapzen) elsewhere, merged
+  into the terrain tiles in the browser only where those are at sea level (land keeps full resolution).
 - **Sea level**: Spratt & Lisiecki (2016), [doi:10.5194/cp-12-1079-2016](https://doi.org/10.5194/cp-12-1079-2016).
   A global mean: local land movement is not included, so past shorelines are indicative.
 - **Labels and borders**: [OpenFreeMap](https://openfreemap.org), © OpenStreetMap contributors.
@@ -74,6 +80,7 @@ Zenodo record into `data/`, then from the repository root:
 uv run --project pipeline pipeline/build.py --step 100a   # ice frames (--step 1ka for a quick start)
 uv run --project pipeline pipeline/flow.py --step 1ka     # velocity, basal sliding / temperature, erosion
 uv run --project pipeline pipeline/debris.py              # debris transport paths and deposits
+uv run --project pipeline pipeline/history.py             # per-place ice history, deglaciation age
 
 # optional: seabed tiles (downloads EMODnet bathymetry) and sea-level curve
 curl -o data/sealevel/spratt2016.txt --create-dirs \

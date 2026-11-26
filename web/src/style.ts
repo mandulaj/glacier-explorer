@@ -15,7 +15,8 @@ export const GROUP_LAYERS: Record<LabelGroup, string[]> = {
 
 const DEM_ATTRIBUTION =
   '<a href="https://mapterhorn.com/attribution/" target="_blank">© Mapterhorn</a> (swisstopo, BEV, IGN, LDBV and others)';
-const SEA_ATTRIBUTION = '<a href="https://emodnet.ec.europa.eu/en/bathymetry" target="_blank">Seabed: EMODnet Bathymetry</a>';
+const SEA_ATTRIBUTION =
+  'Seabed: <a href="https://emodnet.ec.europa.eu/en/bathymetry" target="_blank">EMODnet Bathymetry</a>, <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank">Mapzen terrain tiles</a>';
 
 const PAINT = { shadow: "#3d3a36", highlight: "#ffffff", water: "#a9bfd0" };
 

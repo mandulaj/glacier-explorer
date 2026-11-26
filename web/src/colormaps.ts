@@ -1,6 +1,6 @@
 /** Colour ramps for the ice display modes, shared by shaders (as LUT textures), canvas layers and legends. */
 
-export type IceMode = "plain" | "speed" | "sliding" | "temperature" | "erosion";
+export type IceMode = "plain" | "speed" | "sliding" | "temperature" | "erosion" | "deglaciation";
 
 export interface Ramp {
   title: string;
@@ -57,6 +57,20 @@ export const RAMPS: Record<Exclude<IceMode, "plain">, Ramp> = {
       [1, "sliding"],
     ],
   },
+  deglaciation: {
+    title: "Ice-free since (thousand years ago)",
+    stops: [
+      [0, "#fde725"],
+      [0.35, "#35b779"],
+      [0.7, "#31688e"],
+      [1, "#440154"],
+    ],
+    ticks: [
+      [0, "8"],
+      [0.5, "18"],
+      [1, "28+"],
+    ],
+  },
   erosion: {
     title: "Cumulative erosion potential (m)",
     stops: [
@@ -73,6 +87,9 @@ export const RAMPS: Record<Exclude<IceMode, "plain">, Ramp> = {
     ],
   },
 };
+
+/** ka range mapped onto the deglaciation ramp */
+export const DEGLACIATION_RANGE: [number, number] = [8, 28];
 
 /** log10(m) range mapped onto the erosion ramp */
 export const EROSION_RANGE: [number, number] = [-1, 2];

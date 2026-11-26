@@ -18,7 +18,8 @@
             Terrain from <a href="https://mapterhorn.com/attribution/" target="_blank" rel="noopener">Mapterhorn</a>
             (swisstopo, BEV, IGN and others); places and borders from OpenStreetMap via OpenFreeMap.
             Turn the shading down to zero for a plain black-and-white map.
-            Seabed from <a href="https://emodnet.ec.europa.eu/en/bathymetry" target="_blank" rel="noopener">EMODnet Bathymetry</a>;
+            Seabed from <a href="https://emodnet.ec.europa.eu/en/bathymetry" target="_blank" rel="noopener">EMODnet Bathymetry</a>
+            around the Alps and coarser global terrain tiles elsewhere;
             the sea follows global mean sea level
             (<a href="https://doi.org/10.5194/cp-12-1079-2016" target="_blank" rel="noopener">Spratt &amp; Lisiecki 2016</a>),
             so past shorelines are indicative: local land movement is not included.
@@ -38,6 +39,7 @@
           <p class="info-text" id="info-ice" hidden>
             Ice from a PISM simulation at 1&nbsp;km resolution,
             <a href="https://doi.org/10.5194/tc-12-3265-2018" target="_blank" rel="noopener">Seguinot et al. 2018</a>.
+            Click the map for the ice history of a place, the source of its ice, or a cross-section.
             It is a model result, not a reconstruction: thickness is likely overestimated, and the present-day
             state is not today's glaciers. Erosion is a relative potential, and debris sources are assigned by
             nearest massif.
@@ -54,6 +56,7 @@
               <option value="sliding">Basal sliding (grinding)</option>
               <option value="temperature">Frozen or sliding base</option>
               <option value="erosion">Cumulative erosion</option>
+              <option value="deglaciation">Ice-free since (ground)</option>
             </select>
           </label>
           <label class="range">Opacity <input type="range" id="ice-opacity" min="0.2" max="1" step="0.05" value="0.9" /></label>
@@ -76,6 +79,13 @@
       <div id="legend-bar"></div>
       <div id="legend-ticks"></div>
     </div>
+
+    <div id="map-hint" hidden></div>
+
+    <section id="section" hidden>
+      <header><span id="section-title">Cross-section</span><button id="section-close" type="button" aria-label="Close cross-section">×</button></header>
+      <canvas id="section-canvas"></canvas>
+    </section>
 
     <footer id="timebar">
       <button id="play" aria-label="Play">▶</button>
