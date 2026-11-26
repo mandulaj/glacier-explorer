@@ -1,6 +1,6 @@
 import { bindSurface, createProgram, SURFACE_GLSL, uniformLocations, type SurfaceState } from "./surface";
 
-/** Thick lines lying on the ice surface (flow traces). Each group has one colour. */
+/** Lines lying on the ice surface (flow traces, section line). Translucent groups add up where paths overlap, showing density. */
 
 const LIFT = 60; // metres above the ice
 
@@ -26,14 +26,26 @@ void main() {
 const FRAG = `#version 300 es
 precision highp float;
 uniform vec3 u_color;
+uniform float u_alpha;
 out vec4 fragColor;
-void main() { fragColor = vec4(u_color, 1.0); }`;
+void main() { fragColor = vec4(u_color * u_alpha, u_alpha); }`;
 
 interface Group {
   vao: WebGLVertexArrayObject;
   buffer: WebGLBuffer;
   count: number;
   color: [number, number, number];
+  alpha: number;
+  width: number;
+}
+
+export interface PathGroup {
+  /** one or more paths, each a flat list of uv points [u0, v0, u1, v1, ...] */
+  paths: number[][];
+  color: [number, number, number];
+  alpha?: number;
+  /** CSS px */
+  width?: number;
 }
 
 export class PathLines {
@@ -46,31 +58,30 @@ export class PathLines {
     this.uniforms = uniformLocations(gl, this.program);
   }
 
-  /** Replace all lines. Each path is a flat list of uv points [u0, v0, u1, v1, ...]. */
-  set(paths: { points: number[]; color: [number, number, number] }[]) {
+  /** Replace all lines. */
+  set(groups: PathGroup[]) {
     const gl = this.gl;
     for (const g of this.groups) {
       gl.deleteVertexArray(g.vao);
       gl.deleteBuffer(g.buffer);
     }
-    this.groups = paths
-      .filter((p) => p.points.length >= 4)
-      .map((p) => {
-        const n = p.points.length / 2 - 1;
-        const data = new Float32Array(n * 4);
-        for (let i = 0; i < n; i++) data.set(p.points.slice(i * 2, i * 2 + 4), i * 4);
-        const vao = gl.createVertexArray()!;
-        const buffer = gl.createBuffer()!;
-        gl.bindVertexArray(vao);
-        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-        gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
-        const loc = gl.getAttribLocation(this.program, "a_segment");
-        gl.enableVertexAttribArray(loc);
-        gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, 0, 0);
-        gl.vertexAttribDivisor(loc, 1);
-        gl.bindVertexArray(null);
-        return { vao, buffer, count: n, color: p.color };
-      });
+    this.groups = [];
+    for (const group of groups) {
+      const segments: number[] = [];
+      for (const p of group.paths) for (let i = 0; i + 3 < p.length; i += 2) segments.push(p[i], p[i + 1], p[i + 2], p[i + 3]);
+      if (!segments.length) continue;
+      const vao = gl.createVertexArray()!;
+      const buffer = gl.createBuffer()!;
+      gl.bindVertexArray(vao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(segments), gl.STATIC_DRAW);
+      const loc = gl.getAttribLocation(this.program, "a_segment");
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, 0, 0);
+      gl.vertexAttribDivisor(loc, 1);
+      gl.bindVertexArray(null);
+      this.groups.push({ vao, buffer, count: segments.length / 4, color: group.color, alpha: group.alpha ?? 1, width: group.width ?? 2.2 });
+    }
   }
 
   get empty() {
@@ -82,18 +93,19 @@ export class PathLines {
     gl.useProgram(this.program);
     bindSurface(gl, this.uniforms, surface);
     gl.uniform2f(this.uniforms.u_viewport, gl.drawingBufferWidth, gl.drawingBufferHeight);
-    gl.uniform1f(this.uniforms.u_width, 2.2 * (window.devicePixelRatio || 1));
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
     gl.depthMask(false);
-    gl.disable(gl.BLEND);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     for (const g of this.groups) {
       gl.uniform3fv(this.uniforms.u_color, g.color);
+      gl.uniform1f(this.uniforms.u_alpha, g.alpha);
+      gl.uniform1f(this.uniforms.u_width, g.width * (window.devicePixelRatio || 1));
       gl.bindVertexArray(g.vao);
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, g.count);
     }
     gl.bindVertexArray(null);
-    gl.enable(gl.BLEND);
   }
 
   dispose() {

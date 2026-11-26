@@ -5,7 +5,7 @@ import { DebrisPaths, type DebrisData } from "./debris";
 import { fetchBytes, fetchRaster, type Manifest } from "./data";
 import { FrameSet, TextureCache } from "./frames";
 import { Particles } from "./particles";
-import { PathLines } from "./pathLines";
+import { PathLines, type PathGroup } from "./pathLines";
 import { bindSurface, createProgram, EARTH_CIRCUMFERENCE, FLOW_GLSL, SURFACE_GLSL, uniformLocations, type SurfaceState } from "./surface";
 
 /**
@@ -112,6 +112,8 @@ export class IceLayer implements CustomLayerInterface {
   showParticles = false;
   showDebris = false;
   showContourLabels = true;
+  /** called when new frames have arrived, so point queries can be repeated */
+  onData: (() => void) | null = null;
 
   private map!: MlMap;
   private gl!: WebGL2RenderingContext;
@@ -127,7 +129,8 @@ export class IceLayer implements CustomLayerInterface {
   private debris: DebrisPaths | null = null;
   private debrisData: DebrisData | null = null;
   private traces: PathLines | null = null;
-  private pendingTraces: Parameters<PathLines["set"]>[0] | null = null;
+  private traceGroups = new Map<string, PathGroup[]>();
+  private tracesChanged = false;
   /** frames last drawn, for point queries */
   private drawn: { a: Float32Array; b: Float32Array; mix: number } | null = null;
 
@@ -144,7 +147,10 @@ export class IceLayer implements CustomLayerInterface {
 
   constructor(private manifest: Manifest) {
     const { width, height, ice, flow } = manifest;
-    const repaint = () => this.map?.triggerRepaint();
+    const repaint = () => {
+      this.map?.triggerRepaint();
+      this.onData?.();
+    };
     const load = (file: string) => fetchRaster(file, width, height, ice);
     this.iceFrames = new FrameSet(manifest.frames, load, repaint);
     this.coarseFrames = new FrameSet(manifest.frames.filter((f) => Number.isInteger(f.age)), load, repaint);
@@ -156,15 +162,17 @@ export class IceLayer implements CustomLayerInterface {
     this.map?.triggerRepaint();
   }
 
-  /** Lines to draw on the ice surface (flow traces); an empty list removes them. */
-  setTraces(paths: Parameters<PathLines["set"]>[0]) {
-    this.pendingTraces = paths;
+  /** Lines to draw on the ice surface, by owner (flow traces, section line); an empty list removes them. */
+  setTraces(owner: string, groups: PathGroup[]) {
+    this.traceGroups.set(owner, groups);
+    this.tracesChanged = true;
     this.map?.triggerRepaint();
   }
 
   /** Modelled ice at a position in domain uv, as currently displayed. Null outside the domain or before data has loaded. */
   sample(u: number, v: number): { bed: number; thickness: number; surface: number } | null {
-    const d = this.drawn;
+    // the frames of the current time if loaded, otherwise what is on screen
+    const d = this.iceFrames.peek(this.age) ?? this.coarseFrames.peek(this.age) ?? this.drawn;
     if (!d || !this.bedData || u < 0 || u > 1 || v < 0 || v > 1) return null;
     const { width: W, height: H } = this.manifest;
     const fx = Math.min(Math.max(u * W - 0.5, 0), W - 1.001);
@@ -410,10 +418,10 @@ export class IceLayer implements CustomLayerInterface {
       });
     }
 
-    if (this.pendingTraces) {
+    if (this.tracesChanged) {
       this.traces ??= new PathLines(gl);
-      this.traces.set(this.pendingTraces);
-      this.pendingTraces = null;
+      this.traces.set([...this.traceGroups.values()].flat());
+      this.tracesChanged = false;
     }
     this.traces?.render(gl, state);
 

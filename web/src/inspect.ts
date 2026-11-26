@@ -1,5 +1,5 @@
 import { Marker, MercatorCoordinate, Popup, type LngLat, type Map as MlMap } from "maplibre-gl";
-import { fetchBytes, type Manifest } from "./data";
+import { fetchBytes, fetchRaster, type Manifest } from "./data";
 import type { IceLayer } from "./iceLayer";
 import { EARTH_CIRCUMFERENCE } from "./surface";
 
@@ -12,10 +12,15 @@ import { EARTH_CIRCUMFERENCE } from "./surface";
  */
 
 const LOG_VMAX = Math.log(1 + 3000);
-const TRACE_STEP = 400; // metres
+const TRACE_STEP = 500; // metres
+const TRACE_MAX_STEPS = 3000;
+/** beyond this travel time, "the flow of this moment" says nothing about the real path */
+const TRACE_MAX_YEARS = 20000;
+const ENSEMBLE = 60; // paths per "whose ice" query
 const UPSTREAM: [number, number, number] = [0.91, 0.35, 0.05];
 const DOWNSTREAM: [number, number, number] = [0.04, 0.24, 0.44];
 const SECTION_SAMPLES = 260;
+const SECTION_COLOR: [number, number, number] = [0.82, 0.2, 0.18];
 
 interface Trace {
   points: number[]; // u, v, u, v, ...
@@ -30,6 +35,9 @@ export class Inspector {
   private place: { lngLat: LngLat; u: number; v: number; series: Float32Array | null } | null = null;
   private history: Uint8Array | null = null;
   private historyLoading: Promise<void> | null = null;
+  /** age (ka) of the last ice at every pixel of the frame grid, from the 100-year output */
+  private lastIce: Float32Array | null = null;
+  private spread = document.createElement("select");
   private age = 0;
 
   // popup parts that change with time
@@ -39,7 +47,8 @@ export class Inspector {
 
   // cross-section
   private sectionStart: LngLat | null = null;
-  private section: { a: LngLat; b: LngLat; terrain: (number | null)[] } | null = null;
+  /** `iceTop`: highest ice surface along the line at any time, so the vertical scale can stay fixed */
+  private section: { a: LngLat; b: LngLat; terrain: (number | null)[]; iceTop: number } | null = null;
   private markers: Marker[] = [];
   private panel = document.getElementById("section")!;
   private sectionCanvas = document.getElementById("section-canvas") as HTMLCanvasElement;
@@ -60,6 +69,8 @@ export class Inspector {
     map.on("idle", () => {
       if (this.section && this.section.terrain.includes(null)) this.sampleTerrain();
     });
+    // frames for a new time arrive a moment after the slider moves
+    ice.onData = () => this.setAge(this.age);
     document.getElementById("section-close")!.addEventListener("click", () => this.closeSection());
     new ResizeObserver(() => this.drawSection()).observe(this.sectionCanvas);
     window.addEventListener("keydown", (e) => {
@@ -95,9 +106,12 @@ export class Inspector {
   // ---------------------------------------------------------------- popup
 
   private open(lngLat: LngLat) {
+    // close the previous popup first: its close handler clears the selected place
+    this.popup?.remove();
     const [u, v] = this.toUv(lngLat);
-    this.place = { lngLat, u, v, series: null };
-    this.ice.setTraces([]);
+    const place = { lngLat, u, v, series: null as Float32Array | null };
+    this.place = place;
+    this.ice.setTraces("flow", []);
     this.traceText.textContent = "";
 
     const root = document.createElement("div");
@@ -112,7 +126,7 @@ export class Inspector {
     const whose = document.createElement("button");
     whose.type = "button";
     whose.textContent = "Whose ice is this?";
-    whose.addEventListener("click", () => void this.trace());
+    whose.addEventListener("click", () => this.runTrace());
     const cut = document.createElement("button");
     cut.type = "button";
     cut.textContent = "Cross-section from here";
@@ -120,30 +134,58 @@ export class Inspector {
     const buttons = document.createElement("div");
     buttons.className = "inspect-buttons";
     buttons.append(whose, cut);
-    this.traceText.className = "inspect-trace";
-    root.append(title, this.status, this.chart, buttons, this.traceText);
 
-    this.popup?.remove();
-    this.popup = new Popup({ maxWidth: "290px", closeOnClick: false }).setLngLat(lngLat).setDOMContent(root).addTo(this.map);
-    this.popup.on("close", () => {
-      this.ice.setTraces([]);
+    // advanced: size of the patch from which the flow paths start
+    const options = document.createElement("details");
+    options.className = "inspect-options";
+    const summary = document.createElement("summary");
+    summary.textContent = "Flow path options";
+    const label = document.createElement("label");
+    if (!this.spread.options.length) {
+      for (const [km, text] of [
+        [0, "single path from this point"],
+        [2, "patch of 2 km radius"],
+        [5, "patch of 5 km radius"],
+        [15, "patch of 15 km radius"],
+      ] as const) {
+        this.spread.add(new Option(text, String(km), km === 5, km === 5));
+      }
+      this.spread.addEventListener("change", () => this.runTrace());
+    }
+    label.append("Start from ", this.spread);
+    options.append(summary, label);
+    this.traceText.className = "inspect-trace";
+    root.append(title, this.status, this.chart, buttons, this.traceText, options);
+
+    const popup = new Popup({ maxWidth: "290px", closeOnClick: false }).setLngLat(lngLat).setDOMContent(root).addTo(this.map);
+    this.popup = popup;
+    popup.on("close", () => {
+      if (this.place !== place) return; // a newer popup has taken over
+      this.ice.setTraces("flow", []);
       this.place = null;
     });
     this.updatePopup();
     void this.loadHistory().then(() => {
-      if (this.place?.lngLat === lngLat) {
-        this.place.series = this.seriesAt(u, v);
+      if (this.place === place) {
+        place.series = this.seriesAt(u, v);
         this.updatePopup();
       }
     });
   }
 
   private loadHistory() {
-    const info = this.manifest.history;
-    if (!info) return Promise.resolve();
-    return (this.historyLoading ??= fetchBytes(info.file).then((bytes) => {
-      this.history = bytes;
-    }));
+    const { history, deglaciation, width, height } = this.manifest;
+    if (!history) return Promise.resolve();
+    return (this.historyLoading ??= Promise.all([
+      fetchBytes(history.file).then((bytes) => {
+        this.history = bytes;
+      }),
+      deglaciation
+        ? fetchRaster(deglaciation.frames[0].file, width, height, deglaciation).then((raster) => {
+            this.lastIce = raster;
+          })
+        : null,
+    ]).then(() => undefined));
   }
 
   /** Ice thickness (m) at every history step, old to young. */
@@ -156,7 +198,8 @@ export class Inspector {
   }
 
   private updatePopup() {
-    const place = this.place!;
+    const place = this.place;
+    if (!place) return;
     const now = this.ice.sample(place.u, place.v);
     const ground = this.terrainAt(place.lngLat);
     const lines: string[] = [];
@@ -174,17 +217,19 @@ export class Inspector {
     const info = this.manifest.history;
     const series = place.series;
     if (info && series) {
-      let last = -1;
       let peak = 0;
       series.forEach((t, i) => {
-        if (t > 0) last = i;
         if (t > series[peak]) peak = i;
       });
+      if (series[peak] > 0) lines.push(`Thickest: ${fmt(series[peak])} m at ${info.ages[peak]} ka`);
+      // last ice from the 100-year output (the chart itself has 1 ka steps)
+      const { width: W, height: H } = this.manifest;
+      const last = this.lastIce
+        ? this.lastIce[Math.min(Math.floor(place.v * H), H - 1) * W + Math.min(Math.floor(place.u * W), W - 1)]
+        : NaN;
       if (last < 0) lines.push("Never under ice in this model.");
-      else {
-        lines.push(`Thickest: ${fmt(series[peak])} m at ${info.ages[peak]} ka`);
-        lines.push(last === series.length - 1 ? "Still under ice at the end of the model run." : `Ice-free since about ${info.ages[last + 1]} ka`);
-      }
+      else if (last < 0.05) lines.push("Still under ice at the end of the model run.");
+      else if (Number.isFinite(last)) lines.push(`Ice-free since ${last.toFixed(1)} ka`);
       this.drawChart(series, info.ages);
     }
     this.status.replaceChildren(...lines.flatMap((l, i) => (i ? [document.createElement("br"), l] : [l])));
@@ -238,41 +283,97 @@ export class Inspector {
 
   // ---------------------------------------------------------------- whose ice is this?
 
+  private runTrace() {
+    this.trace().catch((e) => {
+      console.error(e);
+      this.traceText.textContent = "Could not follow the flow here.";
+    });
+  }
+
   private async trace() {
     const place = this.place;
     if (!place) return;
     const here = this.ice.sample(place.u, place.v);
     if (!here || here.thickness <= 0) {
+      this.ice.setTraces("flow", []);
       this.traceText.textContent = `No ice here at ${this.age.toFixed(1)} ka. Move the time slider to when this place is covered and try again.`;
       return;
     }
     this.traceText.textContent = "Following the flow…";
     const flow = await this.ice.flowNow();
-    if (!flow || this.place !== place) return;
+    if (this.place !== place) return;
+    if (!flow) {
+      this.traceText.textContent = "The flow data could not be loaded. Check the connection and try again.";
+      return;
+    }
 
-    const up = this.follow(flow, place.u, place.v, -1);
-    const down = this.follow(flow, place.u, place.v, 1);
-    this.ice.setTraces([
-      { points: up.points, color: UPSTREAM },
-      { points: down.points, color: DOWNSTREAM },
+    // start points: the clicked point, plus random points in a patch around it
+    const radius = Number(this.spread.value) * 1000;
+    const b = this.manifest.mercatorBounds;
+    const my = b[1] + place.v * (b[3] - b[1]);
+    const metresPerUnit = EARTH_CIRCUMFERENCE / Math.cosh(Math.PI * (1 - 2 * my));
+    const starts: [number, number][] = [[place.u, place.v]];
+    for (let i = 0; radius > 0 && i < ENSEMBLE * 3 && starts.length < ENSEMBLE; i++) {
+      const r = radius * Math.sqrt(Math.random());
+      const a = Math.random() * 2 * Math.PI;
+      const u = place.u + (r * Math.cos(a)) / metresPerUnit / (b[2] - b[0]);
+      const v = place.v + (r * Math.sin(a)) / metresPerUnit / (b[3] - b[1]);
+      if ((this.ice.sample(u, v)?.thickness ?? 0) > 0) starts.push([u, v]);
+    }
+    const up = starts.map(([u, v]) => this.follow(flow, u, v, -1));
+    const down = starts.map(([u, v]) => this.follow(flow, u, v, 1));
+
+    // many faint paths add up to a density; the path from the clicked point is drawn solid
+    const alpha = starts.length > 1 ? 0.22 : 1;
+    this.ice.setTraces("flow", [
+      { paths: up.map((t) => t.points), color: UPSTREAM, alpha, width: 2.4 },
+      { paths: down.map((t) => t.points), color: DOWNSTREAM, alpha, width: 2.4 },
+      ...(starts.length > 1
+        ? [
+            { paths: [up[0].points], color: UPSTREAM, width: 1.4 },
+            { paths: [down[0].points], color: DOWNSTREAM, width: 1.4 },
+          ]
+        : []),
     ]);
 
-    const n = up.points.length;
-    const source = this.toLngLat(up.points[n - 2], up.points[n - 1]);
-    const region = this.nearestRegion(source);
-    const years = (t: Trace) => (t.years > 100000 ? "more than 100 000" : `about ${fmt(Math.round(t.years / 100) * 100)}`);
-    const parts: (Node | string)[] = [];
+    // where the paths start: share per source massif
+    const shares = new Map<string, number>();
+    for (const t of up) {
+      const n = t.points.length;
+      const name = this.nearestRegion(this.toLngLat(t.points[n - 2], t.points[n - 1])) ?? "other areas";
+      shares.set(name, (shares.get(name) ?? 0) + 1);
+    }
+    const sources = [...shares.entries()]
+      .sort((x, y) => y[1] - x[1])
+      .map(([name, n]) => (starts.length > 1 ? `${name} ${Math.round((n / up.length) * 100)} %` : name))
+      .join(", ");
+    const quantile = (values: number[], q: number) => [...values].sort((x, y) => x - y)[Math.min(Math.floor(values.length * q), values.length - 1)];
+    const span = (traces: Trace[], pick: (t: Trace) => number, unit: number, round: number) => {
+      const values = traces.map((t) => pick(t) / unit);
+      const show = (x: number) => fmt(Math.round(x / round) * round);
+      const lo = quantile(values, 0.1);
+      const hi = quantile(values, 0.9);
+      return traces.length > 1 && show(lo) !== show(hi) ? `${show(lo)} to ${show(hi)}` : show(quantile(values, 0.5));
+    };
+    const years = (traces: Trace[]) => {
+      const median = quantile(traces.map((t) => t.years), 0.5);
+      return median >= TRACE_MAX_YEARS ? `more than ${fmt(TRACE_MAX_YEARS)}` : `about ${fmt(Math.round(median / 100) * 100)}`;
+    };
     const swatch = (color: [number, number, number]) => {
       const i = document.createElement("i");
       i.style.background = `rgb(${color.map((c) => Math.round(c * 255)).join(",")})`;
       return i;
     };
-    parts.push(swatch(UPSTREAM), `Comes from ${region ? `the ${region} area` : "nearby"}, ${fmt(up.metres / 1000)} km upstream: ${years(up)} years of travel at these speeds.`);
-    parts.push(document.createElement("br"), swatch(DOWNSTREAM), `Flows on for ${fmt(down.metres / 1000)} km to where the trace ends (${years(down)} years).`);
     const note = document.createElement("em");
-    note.textContent = ` Follows the flow of ${this.age.toFixed(1)} ka as if it stayed unchanged.`;
-    parts.push(note);
-    this.traceText.replaceChildren(...parts);
+    note.textContent = ` ${starts.length > 1 ? `${starts.length} paths. ` : ""}Follows the flow of ${this.age.toFixed(1)} ka as if it stayed unchanged.`;
+    this.traceText.replaceChildren(
+      swatch(UPSTREAM),
+      `Comes from: ${sources}. ${span(up, (t) => t.metres, 1000, 1)} km upstream, ${years(up)} years of travel at these speeds.`,
+      document.createElement("br"),
+      swatch(DOWNSTREAM),
+      `Flows on for ${span(down, (t) => t.metres, 1000, 1)} km (${years(down)} years) to the margin or a stagnant spot.`,
+      note,
+    );
   }
 
   /** Streamline through the present flow field, upstream (-1) or downstream (+1). */
@@ -307,7 +408,7 @@ export class Inspector {
     };
 
     const trace: Trace = { points: [u, v], metres: 0, years: 0 };
-    for (let i = 0; i < 5000; i++) {
+    for (let i = 0; i < TRACE_MAX_STEPS; i++) {
       const first = step(u, v);
       if (!first) break;
       const mid = step(u + first[0] / 2, v + first[1] / 2) ?? first; // midpoint rule
@@ -317,6 +418,7 @@ export class Inspector {
       if (!ice || ice.thickness <= 0) break;
       trace.metres += TRACE_STEP;
       trace.years += TRACE_STEP / mid[2];
+      if (trace.years > TRACE_MAX_YEARS) break;
       if (i % 2 === 1) trace.points.push(u, v);
     }
     trace.points.push(u, v);
@@ -363,8 +465,16 @@ export class Inspector {
     this.hint.hidden = true;
     this.map.getCanvas().style.cursor = "";
     this.markers.push(this.marker(to, "B"));
-    this.section = { a: from, b: to, terrain: [] };
-    const line = { type: "Feature" as const, properties: {}, geometry: { type: "LineString" as const, coordinates: [from.toArray(), to.toArray()] } };
+    this.section = { a: from, b: to, terrain: [], iceTop: -Infinity };
+    this.panel.hidden = false;
+    this.updateSection();
+  }
+
+  /** Redraw line and profile after the section was created or an end was dragged. */
+  private updateSection() {
+    const s = this.section;
+    if (!s) return;
+    const line = { type: "Feature" as const, properties: {}, geometry: { type: "LineString" as const, coordinates: [s.a.toArray(), s.b.toArray()] } };
     const source = this.map.getSource("section") as { setData(d: unknown): void } | undefined;
     if (source) source.setData(line);
     else {
@@ -372,8 +482,12 @@ export class Inspector {
       this.map.addLayer({ id: "section", type: "line", source: "section", paint: { "line-color": "#d1342f", "line-width": 2.5, "line-dasharray": [2, 1] } }, this.ice.id);
     }
     this.map.setLayoutProperty("section", "visibility", "visible");
-    this.panel.hidden = false;
-    this.sectionTitle.textContent = `Cross-section A to B · ${(from.distanceTo(to) / 1000).toFixed(1)} km`;
+    // the draped line disappears under the ice, so draw it on the ice surface as well
+    const onIce: number[] = [];
+    for (let i = 0; i < SECTION_SAMPLES; i += 4) onIce.push(...this.toUv(this.sectionPoint(i)));
+    onIce.push(...this.toUv(s.b));
+    this.ice.setTraces("section", [{ paths: [onIce], color: SECTION_COLOR, width: 1.6 }]);
+    this.sectionTitle.textContent = `Cross-section A to B · ${(s.a.distanceTo(s.b) / 1000).toFixed(1)} km · drag A or B to move`;
     this.sampleTerrain();
   }
 
@@ -382,14 +496,25 @@ export class Inspector {
     this.panel.hidden = true;
     this.markers.forEach((m) => m.remove());
     this.markers = [];
+    this.ice.setTraces("section", []);
     if (this.map.getLayer("section")) this.map.setLayoutProperty("section", "visibility", "none");
   }
 
-  private marker(at: LngLat, label: string) {
+  private marker(at: LngLat, label: "A" | "B") {
     const el = document.createElement("div");
     el.className = "section-marker";
     el.textContent = label;
-    return new Marker({ element: el }).setLngLat(at).addTo(this.map);
+    el.title = "Drag to move this end";
+    const marker = new Marker({ element: el, draggable: true }).setLngLat(at).addTo(this.map);
+    marker.on("drag", () => {
+      if (!this.section) return;
+      if (label === "A") this.section.a = marker.getLngLat();
+      else this.section.b = marker.getLngLat();
+      this.updateSection();
+    });
+    // a drag must not count as a map click (which would open the place popup)
+    el.addEventListener("click", (e) => e.stopPropagation());
+    return marker;
   }
 
   private sectionPoint(i: number): LngLat {
@@ -401,7 +526,26 @@ export class Inspector {
   private sampleTerrain() {
     const s = this.section!;
     s.terrain = Array.from({ length: SECTION_SAMPLES }, (_, i) => this.terrainAt(this.sectionPoint(i)));
+    this.measureIceTop();
     this.drawSection();
+    // the history cube gives the thickest ice of the whole cycle; it may still be loading
+    if (!this.history) void this.loadHistory().then(() => this.section === s && (this.measureIceTop(), this.drawSection()));
+  }
+
+  /** Highest ice surface along the section over the whole glacial cycle. */
+  private measureIceTop() {
+    const s = this.section!;
+    const info = this.manifest.history;
+    s.iceTop = -Infinity;
+    if (!info || !this.history) return;
+    for (let i = 0; i < SECTION_SAMPLES; i++) {
+      const [u, v] = this.toUv(this.sectionPoint(i));
+      const bed = this.ice.sample(u, v)?.bed;
+      const series = this.seriesAt(u, v);
+      if (bed === undefined || !series) continue;
+      const thickest = Math.max(...series);
+      if (thickest > 0) s.iceTop = Math.max(s.iceTop, bed + thickest);
+    }
   }
 
   private drawSection() {
@@ -431,7 +575,9 @@ export class Inspector {
     }
     const tops = surface.map((t, i) => t ?? ground[i]);
     const lo = Math.min(...ground);
-    const hi = Math.max(...tops);
+    // fixed vertical scale: room for the thickest ice of the whole cycle, so the terrain
+    // does not rescale while time runs
+    const hi = Math.max(...tops, s.iceTop);
     const span = Math.max(hi - lo, 200);
     const pad = { l: 52, r: 12, t: 10, b: 22 };
     const x = (i: number) => pad.l + (i / (SECTION_SAMPLES - 1)) * (w - pad.l - pad.r);

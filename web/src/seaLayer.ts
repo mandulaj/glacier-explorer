@@ -14,27 +14,32 @@ export interface SeaLevelCurve {
   source: string;
 }
 
-/** The seabed is global (see seabed.ts); the mesh covers the mercator world. */
-const LON: [number, number] = [-180, 180];
-const LAT: [number, number] = [-80, 80];
-const CELLS = 128;
+/**
+ * The mesh is a square centred on the map centre and scaled to the view, and all
+ * large numbers are combined in double precision before they reach the GPU.
+ * With world-sized single-precision coordinates the surface height wobbles by
+ * metres as the camera moves, which on a flat seabed moves the shoreline by kilometres.
+ */
+const CELLS = 96;
 
 const mx = (lon: number) => (lon + 180) / 360;
 const my = (lat: number) => {
   const s = Math.sin((lat * Math.PI) / 180);
   return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI);
 };
+const EARTH = EARTH_CIRCUMFERENCE;
 
 const VERT = `#version 300 es
 precision highp float;
-in vec2 a_uv;
-uniform mat4 u_matrix;
-uniform vec4 u_bounds;
+in vec2 a_pos; // -0.5 .. 0.5 across the square
+uniform mat4 u_matrix; // square-local position (and metres of height) to clip space
 uniform float u_level;
+uniform float u_centreY; // mercator y of the square's centre
+uniform float u_size;
 void main() {
-  float y = mix(u_bounds.y, u_bounds.w, a_uv.y);
-  float stretch = cosh(3.141592653589793 * (1.0 - 2.0 * y));
-  gl_Position = u_matrix * vec4(a_uv, u_level * stretch / ${EARTH_CIRCUMFERENCE.toFixed(1)}, 1.0);
+  // height in mercator units grows with 1 / cos(latitude)
+  float stretch = cosh(3.141592653589793 * (1.0 - 2.0 * (u_centreY + a_pos.y * u_size)));
+  gl_Position = u_matrix * vec4(a_pos, u_level * stretch, 1.0);
 }`;
 
 const FRAG = `#version 300 es
@@ -59,7 +64,6 @@ export class SeaLayer implements CustomLayerInterface {
   private vao!: WebGLVertexArrayObject;
   private indexCount = 0;
   private level = 0;
-  private bounds: [number, number, number, number] = [mx(LON[0]), my(LAT[1]), mx(LON[1]), my(LAT[0])];
 
   constructor(private curve: SeaLevelCurve | null) {}
 
@@ -83,7 +87,7 @@ export class SeaLayer implements CustomLayerInterface {
     this.program = createProgram(gl, VERT, FRAG);
     this.uniforms = uniformLocations(gl, this.program);
     const uv = new Float32Array((CELLS + 1) * (CELLS + 1) * 2);
-    for (let j = 0, k = 0; j <= CELLS; j++) for (let i = 0; i <= CELLS; i++) uv.set([i / CELLS, j / CELLS], 2 * k++);
+    for (let j = 0, k = 0; j <= CELLS; j++) for (let i = 0; i <= CELLS; i++) uv.set([i / CELLS - 0.5, j / CELLS - 0.5], 2 * k++);
     const index = new Uint32Array(CELLS * CELLS * 6);
     for (let j = 0, k = 0; j < CELLS; j++) {
       for (let i = 0; i < CELLS; i++, k += 6) {
@@ -97,7 +101,7 @@ export class SeaLayer implements CustomLayerInterface {
     gl.bindVertexArray(this.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
     gl.bufferData(gl.ARRAY_BUFFER, uv, gl.STATIC_DRAW);
-    const loc = gl.getAttribLocation(this.program, "a_uv");
+    const loc = gl.getAttribLocation(this.program, "a_pos");
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
@@ -112,19 +116,34 @@ export class SeaLayer implements CustomLayerInterface {
 
   render(gl: WebGL2RenderingContext, args: CustomRenderMethodInput) {
     if (!this.visible) return;
+    // square around the map centre, generous enough for tilted views
+    const centre = this.map.getCenter();
+    const bounds = this.map.getBounds();
+    const cx = mx(centre.lng);
+    const cy = my(Math.min(Math.max(centre.lat, -84), 84));
+    const reach = Math.max(
+      Math.abs(mx(bounds.getEast()) - cx),
+      Math.abs(mx(bounds.getWest()) - cx),
+      Math.abs(my(Math.max(bounds.getSouth(), -84)) - cy),
+      Math.abs(my(Math.min(bounds.getNorth(), 84)) - cy),
+    );
+    const size = Math.min(Math.max(reach * 2.4, 1e-4), 2);
+
+    // mercator -> clip (doubles), composed with the square's placement; the height
+    // column converts metres to mercator units (the latitude stretch is applied in the shader)
     const m = args.defaultProjectionData.mainMatrix as ArrayLike<number>;
-    const [x0, y0, x1, y1] = this.bounds;
     const matrix = new Float32Array(16);
     for (let r = 0; r < 4; r++) {
-      matrix[r] = m[r] * (x1 - x0);
-      matrix[4 + r] = m[4 + r] * (y1 - y0);
-      matrix[8 + r] = m[8 + r];
-      matrix[12 + r] = m[r] * x0 + m[4 + r] * y0 + m[12 + r];
+      matrix[r] = m[r] * size;
+      matrix[4 + r] = m[4 + r] * size;
+      matrix[8 + r] = m[8 + r] / EARTH;
+      matrix[12 + r] = m[r] * cx + m[4 + r] * cy + m[12 + r];
     }
     const u = this.uniforms;
     gl.useProgram(this.program);
     gl.uniformMatrix4fv(u.u_matrix, false, matrix);
-    gl.uniform4fv(u.u_bounds, this.bounds);
+    gl.uniform1f(u.u_centreY, cy);
+    gl.uniform1f(u.u_size, size);
     // a touch below the nominal level, so land lying exactly at sea level stays dry
     gl.uniform1f(u.u_level, (this.level - 0.2) * this.exaggeration);
     gl.uniform1f(u.u_opacity, 0.62);

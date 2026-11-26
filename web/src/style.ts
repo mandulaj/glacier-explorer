@@ -7,7 +7,7 @@ export const FIRST_LABEL_LAYER = "towns-small";
 export type LabelGroup = "borders" | "towns" | "summits" | "water";
 
 export const GROUP_LAYERS: Record<LabelGroup, string[]> = {
-  borders: ["borders"],
+  borders: ["borders", "coast"],
   towns: ["towns-small", "towns-large"],
   summits: ["summits"],
   water: ["water", "rivers"],
@@ -86,6 +86,15 @@ export function buildStyle(demTiles: string, hasSeabed: boolean): StyleSpecifica
         "source-layer": "waterway",
         filter: ["==", ["get", "class"], "river"],
         paint: { "line-color": p.water, "line-width": ["interpolate", ["linear"], ["zoom"], 7, 0.5, 12, 2] },
+      },
+      {
+        // today's coastline, a reference for where the sea stood at other times
+        id: "coast",
+        type: "line",
+        source: "osm",
+        "source-layer": "water",
+        filter: ["==", ["get", "class"], "ocean"],
+        paint: { "line-color": "#1a1a1a", "line-opacity": 0.55, "line-width": ["interpolate", ["linear"], ["zoom"], 5, 0.6, 10, 1.2] },
       },
       {
         id: "borders",

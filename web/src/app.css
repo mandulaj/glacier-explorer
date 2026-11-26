@@ -598,3 +598,21 @@ kbd {
     left: 12px;
   }
 }
+
+.inspect-options {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.inspect-options summary {
+  cursor: pointer;
+}
+
+.inspect-options select {
+  font: inherit;
+  margin-top: 4px;
+}
+
+.section-marker {
+  cursor: grab;
+}
