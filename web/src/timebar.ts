@@ -58,6 +58,17 @@ export class TimeBar {
     this.onChange(age);
   }
 
+  /** Mark a span of time on the track (e.g. where a second ice model applies), or null to remove the mark. */
+  setHighlight(range: { from: number; to: number; label: string } | null) {
+    const band = document.getElementById("model-band")!;
+    band.hidden = !range;
+    if (!range) return;
+    const left = (age: number) => (1 - Math.min(age, this.maxAge) / this.maxAge) * 100;
+    band.style.left = `${left(range.from)}%`;
+    band.style.width = `${left(range.to) - left(range.from)}%`;
+    band.textContent = range.label;
+  }
+
   pause() {
     if (this.playing) this.toggle();
   }

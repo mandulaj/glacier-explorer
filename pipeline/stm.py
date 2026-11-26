@@ -13,6 +13,9 @@ Output in web/public/data/stm/:
     manifest.json   grid, encodings, frame list (as build.py)
     bed.bin         bed elevation of the simulation
     ice/<age>.bin   extended ice thickness per frame
+    flow/<age>.bin  surface velocity every 500 years, encoded as by flow.py. The data holds the
+                    speed only: the direction is taken down the slope of the smoothed ice surface.
+    history.bin     ice thickness through time for every place, as by history.py
     hole.bin        on the grid of the main manifest: 255 where this model takes over
 """
 
@@ -26,15 +29,31 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # -I drops the script 
 
 import numpy as np  # noqa: E402
 from pyproj import Transformer  # noqa: E402
-from scipy.ndimage import map_coordinates  # noqa: E402
+from scipy.ndimage import gaussian_filter, map_coordinates  # noqa: E402
 
 from build import BED_ENC, MARGIN_SLOPE, THK_ENC, THK_MIN, extended_thickness, frame_name  # noqa: E402
 from codec import encode_u16  # noqa: E402
+from flow import VMAX, signed_log  # noqa: E402
 from grid import EARTH_CIRCUMFERENCE, lat_to_my, lon_to_mx, mx_to_lon, my_to_lat  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 CELL = 500.0  # m, grid of the "play" pack
 PRESENT = 1950  # ages in the viewer are years before 1950
+FLOW_EVERY = 5  # frames between flow frames (500 years)
+SMOOTH = 4.0  # cells (2 km): the flow direction follows the surface slope averaged over several ice thicknesses
+THK_STEP = 12.0  # metres per count in history.bin (as history.py)
+
+
+def downslope(surface, ice):
+    """Unit vector (east, north) down the smoothed ice surface; zero off the ice."""
+    weight = gaussian_filter(ice.astype(np.float32), SMOOTH)
+    smooth = gaussian_filter(np.where(ice, surface, 0.0).astype(np.float32), SMOOTH) / np.maximum(weight, 1e-6)
+    smooth = np.where(ice, smooth, surface)  # no cliffs into the ice-free ground
+    d_row, d_col = np.gradient(smooth)
+    east, north = -d_col, d_row  # rows run north to south
+    norm = np.hypot(east, north)
+    ok = ice & (norm > 1e-6)
+    return np.where(ok, east / np.maximum(norm, 1e-6), 0.0), np.where(ok, north / np.maximum(norm, 1e-6), 0.0)
 
 
 def mercator_grid(bounds, width, height):
@@ -78,8 +97,27 @@ def main():
         out = map_coordinates(field, [rows, cols], order=1, mode="nearest")
         return np.where(inside, out, outside).astype(np.float32)
 
+    # direction of geographic east / north in the UTM frame, to rotate velocities (as grid.Resampler)
+    to_utm = Transformer.from_crs("EPSG:4326", "EPSG:32632", always_xy=True)
+    mx = bounds[0] + (np.arange(width) + 0.5) / width * (bounds[2] - bounds[0])
+    my = bounds[1] + (np.arange(height) + 0.5) / height * (bounds[3] - bounds[1])
+    lon_t, lat_t = np.meshgrid(mx_to_lon(mx), my_to_lat(my))
+    ex, ey = to_utm.transform(lon_t + 1e-4, lat_t)
+    nx_, ny_ = to_utm.transform(lon_t, lat_t + 1e-4)
+    east_x, east_y = (ex - x) / np.hypot(ex - x, ey - y), (ey - y) / np.hypot(ex - x, ey - y)
+    north_x, north_y = (nx_ - x) / np.hypot(nx_ - x, ny_ - y), (ny_ - y) / np.hypot(nx_ - x, ny_ - y)
+
+    # history cube at half the frame size
+    hw, hh = width // 2, height // 2
+    hx, hy = mercator_grid(bounds, hw, hh)
+    h_cols, h_rows = (hx - west) / CELL, (north - hy) / CELL
+    h_inside = (h_cols >= 0) & (h_cols <= nx - 1) & (h_rows >= 0) & (h_rows <= ny - 1)
+    cube = np.zeros((hh, hw, len(meta["times"])), np.uint8)
+
     out = args.out / "stm"
     (out / "ice").mkdir(parents=True, exist_ok=True)
+    (out / "flow").mkdir(exist_ok=True)
+    flow_frames, flow_total = [], 0
     (out / "bed.bin").write_bytes(encode_u16(resample(base, 0.0), **BED_ENC))
 
     pixel_km2 = ((bounds[2] - bounds[0]) / width * EARTH_CIRCUMFERENCE * np.cos(np.radians(46.8)) / 1000) ** 2
@@ -101,6 +139,28 @@ def main():
             total += len(blob)
             area = float((ht > 0).sum() * pixel_km2)
             frames.append({"age": round(age, 3), "file": f"stm/ice/{name}.bin", "area": round(area)})
+            thick = map_coordinates(thk.astype(np.float32), [h_rows, h_cols], order=1, mode="nearest")
+            cube[..., k] = np.clip(np.rint(np.where(h_inside, thick, 0) / THK_STEP), 0, 255)
+
+            if k % FLOW_EVERY == 0:
+                speed = np.frombuffer(raw, dtype="<u2", count=n, offset=4 * n).reshape(ny, nx).astype(np.float32)
+                ice = thk >= 1
+                de, dn = downslope(base + rise, ice)
+                vx, vy = resample(de * speed, 0.0), resample(dn * speed, 0.0)  # UTM x, y components
+                v_east, v_north = vx * east_x + vy * east_y, vx * north_x + vy * north_y
+                mask = ht > 0
+                rgba = np.zeros((height, width, 4), np.uint8)
+                rgba[..., 0] = np.where(mask, signed_log(v_east), 128)
+                rgba[..., 1] = np.where(mask, signed_log(v_north), 128)
+                rgba[..., 3] = 255  # basal speed (B) and bed temperature (A) are not known
+                fblob = gzip.compress(rgba.tobytes(), compresslevel=9, mtime=0)
+                (out / "flow" / f"{name}.bin").write_bytes(fblob)
+                flow_total += len(fblob)
+                flow_frames.append({"age": round(age, 3), "file": f"stm/flow/{name}.bin"})
+                if k % 50 == 0:
+                    got = np.hypot(v_east, v_north)[mask]
+                    print(f"         flow: speed median {np.median(speed[ice]):5.1f} m/a in the data, {np.median(got):5.1f} m/a encoded")
+
             if k % 50 == 0 or k == len(meta["times"]) - 1:
                 print(f"  {age:6.2f} ka  model {meta['stats'][k]['area']:7.0f} km2  resampled {area:7.0f} km2  {len(blob) / 1e3:5.0f} kB")
 
@@ -114,7 +174,12 @@ def main():
         "bed": {"file": "stm/bed.bin", **BED_ENC},
         "ice": {**THK_ENC, "marginSlope": MARGIN_SLOPE},
         "frames": frames,
+        "flow": {"vmax": VMAX, "tempStep": 0.05, "frames": flow_frames},
     }
+    blob = gzip.compress(cube.tobytes(), compresslevel=9, mtime=0)
+    (out / "history.bin").write_bytes(blob)
+    manifest["history"] = {"file": "stm/history.bin", "width": hw, "height": hh, "ages": [f["age"] for f in frames], "step": THK_STEP}
+    print(f"flow frames: {len(flow_frames)}, {flow_total / 1e6:.1f} MB; history cube {cube.shape}, {len(blob) / 1e6:.1f} MB")
 
     # where this model takes over from the main one: its domain, on the main grid
     main_manifest = json.loads((args.out / "manifest.json").read_text())

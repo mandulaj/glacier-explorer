@@ -43,9 +43,13 @@
             glaciers did not shrink that evenly. Historic national maps (from 1844) and aerial photographs (from 1926,
             the latest six years of flights shown together) are served by
             <a href="https://www.swisstopo.admin.ch/en/timetravel" target="_blank" rel="noopener">swisstopo</a>.
-            The terrain is today's throughout.
+            The terrain is today's throughout. "Lost ice in 3D" puts back the ice that stood above it:
+            the reconstructed glacier surface of about 1850
+            (<a href="https://doi.org/10.5281/zenodo.14336827" target="_blank" rel="noopener">Reinthaler &amp; Paul 2025</a>).
+            Only 1850 is data: towards today that ice is thinned in step with the area loss inside the inventory outlines.
           </p>
           <label><input type="checkbox" id="recent-glaciers" checked /> Glacier extent</label>
+          <label><input type="checkbox" id="recent-3d" checked /> Lost ice in 3D</label>
           <label class="range">Backdrop
             <select id="recent-backdrop">
               <option value="maps">Historic maps</option>
@@ -65,13 +69,6 @@
             It is a model result, not a reconstruction: thickness is likely overestimated, and the present-day
             state is not today's glaciers. Erosion is a relative potential, and debris sources are assigned by
             nearest massif.
-            The second ice model is the
-            <a href="https://swiss-time-machine.org" target="_blank" rel="noopener">Swiss Time Machine</a> simulation
-            (<a href="https://doi.org/10.5281/zenodo.24003777" target="_blank" rel="noopener">data</a>, built on
-            <a href="https://doi.org/10.1038/s41467-025-56168-3" target="_blank" rel="noopener">Leger et al. 2025</a>):
-            finer and tuned to field evidence, but only for Switzerland and 37 to 7&nbsp;ka, and published as a
-            visualisation rather than as scientific results. Flow, erosion and debris views and the click
-            tools keep using the whole-Alps model.
             Zoom out for the ice sheet over northern Europe. It is not part of the simulation: flat outlines
             from geological reconstructions, every thousand years from 25 to 10&nbsp;ka
             (<a href="https://doi.org/10.1111/bor.12142" target="_blank" rel="noopener">DATED-1, Hughes et al. 2016</a>),
@@ -80,13 +77,33 @@
             faded into each other in between.
           </p>
           <label><input type="checkbox" id="ice-visible" checked /> Show ice</label>
-          <label class="range">Ice model
+          <label class="range"><span>Ice model <button type="button" class="info" aria-expanded="false" aria-controls="info-model" aria-label="About the ice models">i</button></span>
             <select id="ice-model">
               <option value="alps">Whole Alps, 1 km grid</option>
               <option value="swiss">Switzerland, 500 m grid (37–7 ka)</option>
             </select>
           </label>
           <p class="note" id="ice-model-note" hidden></p>
+          <div class="info-text" id="info-model" hidden>
+            <p>
+              <strong>Whole Alps, 1 km.</strong> PISM simulation of the whole glacial cycle, 120&nbsp;000 years to
+              today, driven by a scaled ice-core temperature record
+              (<a href="https://doi.org/10.5194/tc-12-3265-2018" target="_blank" rel="noopener">Seguinot et al. 2018</a>;
+              <a href="https://doi.org/10.5281/zenodo.7802275" target="_blank" rel="noopener">data</a>).
+              Has every view: flow, sliding, bed temperature, erosion, debris. Its ice is likely too thick.
+            </p>
+            <p>
+              <strong>Switzerland, 500 m.</strong> The
+              <a href="https://swiss-time-machine.org" target="_blank" rel="noopener">Swiss Time Machine</a> simulation
+              with the IGM model (<a href="https://doi.org/10.5281/zenodo.24003777" target="_blank" rel="noopener">data</a>),
+              built on <a href="https://doi.org/10.1038/s41467-025-56168-3" target="_blank" rel="noopener">Leger et al. 2025</a>,
+              a model tuned to field evidence. Finer and thinner ice, but only Switzerland and 37 to 7&nbsp;ka
+              (marked on the time bar), and published as a visualisation, not as scientific results.
+              It comes with surface speed only: the flow direction shown is derived here from the slope of the
+              ice surface. Sliding, bed temperature, erosion and debris stay with the 1&nbsp;km model, and
+              flow traces and cross-sections end at the edge of its area.
+            </p>
+          </div>
           <label><input type="checkbox" id="context-ice" checked /> Northern ice sheet <output id="context-info"></output></label>
           <label><input type="checkbox" id="contour-labels" checked /> Contour heights (m)</label>
           <label><input type="checkbox" id="particles" /> Flow particles</label>
@@ -139,6 +156,7 @@
       </div>
       <div id="track">
         <div id="periods"></div>
+        <div id="model-band" hidden></div>
         <canvas id="curve"></canvas>
         <input type="range" id="time" min="0" max="119" step="0.05" value="95" aria-label="Time" />
         <div id="events"></div>

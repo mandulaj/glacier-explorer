@@ -97,6 +97,7 @@ async function main() {
   const modelNote = document.getElementById("ice-model-note")!;
   modelSelect.closest("label")!.hidden = !swiss;
   let swissHole: Uint8Array | null = null;
+  let swissActive = false;
   const updateModel = (age: number) => {
     if (!swiss || !swissManifest) return;
     const frames = swissManifest.frames;
@@ -107,7 +108,13 @@ async function main() {
     swiss.opacity = ice.opacity;
     swiss.exaggeration = ice.exaggeration;
     swiss.showContourLabels = ice.showContourLabels;
-    swiss.mode = ice.mode === "erosion" || ice.mode === "deglaciation" ? ice.mode : "plain";
+    // the 500 m model has surface velocity only: speed colouring and particles, nothing basal
+    swiss.mode = ice.mode === "erosion" || ice.mode === "deglaciation" || ice.mode === "speed" ? ice.mode : "plain";
+    swiss.showParticles = ice.showParticles;
+    if (active !== swissActive) {
+      swissActive = active;
+      inspector?.reset(); // popup, trace and section belong to the model that was on screen
+    }
     ice.setHole(active ? swissHole : null);
     modelNote.hidden = !chosen || active;
     modelNote.textContent = `Covers ${oldest.toFixed(0)} to ${youngest.toFixed(0)} ka only: showing the whole-Alps model.`;
@@ -163,6 +170,8 @@ async function main() {
       swiss.visible = false;
       // every menu control that changes the ice applies to both models
       const sync = () => {
+        const frames = swissManifest!.frames;
+        timebar.setHighlight(modelSelect.value === "swiss" ? { from: frames[0].age, to: frames[frames.length - 1].age, label: "500 m model" } : null);
         if (modelSelect.value === "swiss") swiss.setAge(timebar.age);
         updateModel(timebar.age);
       };
@@ -201,7 +210,18 @@ async function main() {
       layer.setAge(timebar.age);
     }
     bindIceModes(map, ice, ground);
-    inspector = new Inspector(map, ice, manifest);
+    const mainModel = { ice, manifest };
+    const swissModel = swiss && swissManifest ? { ice: swiss, manifest: swissManifest, label: "500 m model (Swiss Time Machine)" } : null;
+    inspector = new Inspector(map, mainModel, (at) => {
+      // the model drawn at the clicked place: the Swiss one inside the hole it leaves in the main model
+      if (!swissModel || !swissActive || !swissHole) return mainModel;
+      const [x0, y0, x1, y1] = manifest.mercatorBounds;
+      const m = maplibregl.MercatorCoordinate.fromLngLat(at);
+      const col = Math.floor(((m.x - x0) / (x1 - x0)) * manifest.width);
+      const row = Math.floor(((m.y - y0) / (y1 - y0)) * manifest.height);
+      const inside = col >= 0 && col < manifest.width && row >= 0 && row < manifest.height && swissHole[row * manifest.width + col] > 0;
+      return inside ? swissModel : mainModel;
+    });
     inspector.setAge(timebar.age);
     if (manifest.debris) bindDebris(map, ice, manifest, () => timebar.age);
     recent = bindRecent(map, (on) => {
@@ -252,6 +272,7 @@ function bindRecent(map: maplibregl.Map, onSwitch: (on: boolean) => void): Recen
     el("recent-year").textContent = slider.value;
     recent.setYear(Number(slider.value));
     if (recent.active) yearToUrl(Number(slider.value));
+    applyLia();
   };
   slider.addEventListener("input", () => setYear(Number(slider.value)));
 
@@ -320,11 +341,36 @@ function bindRecent(map: maplibregl.Map, onSwitch: (on: boolean) => void): Recen
     true,
   );
 
+  // the ice that stood above today's terrain, as a 3D layer like the ice age ice
+  const solid = el<HTMLInputElement>("recent-3d");
+  const exaggeration = el<HTMLInputElement>("exaggeration");
+  let lia: IceLayer | null = null;
+  let liaLoading: Promise<void> | null = null;
+  const applyLia = () => {
+    if (!lia) return;
+    lia.visible = recent.active && solid.checked;
+    lia.exaggeration = Number(exaggeration.value);
+    lia.setAge(LAST_YEAR - Number(slider.value)); // frames are stored old to young by age, like the ice age
+  };
+  const loadLia = () =>
+    (liaLoading ??= fetchJson<Manifest>("recent/lia/manifest.json")
+      .then((manifest) => {
+        lia = new IceLayer(manifest, "ice-lia");
+        lia.showContourLabels = false;
+        lia.opacity = 0.85;
+        map.addLayer(lia, FIRST_LABEL_LAYER);
+      })
+      .catch(() => {
+        solid.closest("label")!.hidden = true; // data built without the Little Ice Age surface
+      }));
+  exaggeration.addEventListener("input", applyLia);
+
   const applyMenu = () => {
     recent.setBackdrop(backdrop.value as Backdrop, Number(opacity.value));
-    recent.setGlaciers(glaciers.checked);
+    recent.setGlaciers(glaciers.checked, solid.checked && !solid.closest("label")!.hidden);
+    applyLia();
   };
-  for (const input of [backdrop, opacity, glaciers]) input.addEventListener("input", applyMenu);
+  for (const input of [backdrop, opacity, glaciers, solid]) input.addEventListener("input", applyMenu);
 
   const setEra = async (on: boolean, year?: number) => {
     stop();
@@ -348,6 +394,8 @@ function bindRecent(map: maplibregl.Map, onSwitch: (on: boolean) => void): Recen
     yearToUrl(on ? Number(slider.value) : null);
     applyMenu();
     await ready;
+    if (on) await loadLia();
+    applyMenu();
     markInventories();
     if (on) setYear(Number(slider.value));
   };

@@ -62,13 +62,22 @@ function smooth(points: number[]): number[] {
   return p;
 }
 
+/** An ice model the inspector can read: its layer, its grid, and the history data once loaded. */
+export interface InspectModel {
+  ice: IceLayer;
+  manifest: Manifest;
+  /** shown in the popup, for models other than the main one */
+  label?: string;
+  history?: Uint8Array | null;
+  historyLoading?: Promise<void> | null;
+  lastIce?: Float32Array | null;
+}
+
 export class Inspector {
   private popup: Popup | null = null;
   private place: { lngLat: LngLat; u: number; v: number; series: Float32Array | null } | null = null;
-  private history: Uint8Array | null = null;
-  private historyLoading: Promise<void> | null = null;
-  /** age (ka) of the last ice at every pixel of the frame grid, from the 100-year output */
-  private lastIce: Float32Array | null = null;
+  /** the model the open popup, trace and section read: the one drawn where the user clicked */
+  private model: InspectModel;
   private spread = document.createElement("select");
   /** flow trace of the open popup: start offsets (metres) are kept so the picture is stable while time moves */
   private traceOffsets: [number, number][] | null = null;
@@ -95,11 +104,30 @@ export class Inspector {
   /** off while the map shows something other than the ice age */
   enabled = true;
 
+  private get ice() {
+    return this.model.ice;
+  }
+  private get manifest() {
+    return this.model.manifest;
+  }
+  private get history() {
+    return this.model.history ?? null;
+  }
+  /** age (ka) of the last ice at every pixel of the frame grid, from the 100-year output */
+  private get lastIce() {
+    return this.model.lastIce ?? null;
+  }
+
+  /**
+   * @param main the main ice model
+   * @param pick which model is drawn at a place (defaults to the main one everywhere)
+   */
   constructor(
     private map: MlMap,
-    private ice: IceLayer,
-    private manifest: Manifest,
+    main: InspectModel,
+    private pick: (at: LngLat) => InspectModel = () => main,
   ) {
+    this.model = main;
     map.on("click", (e) => {
       if (!this.enabled) return;
       if (document.pointerLockElement) return; // flying with mouse look
@@ -111,12 +139,26 @@ export class Inspector {
       if (this.section && this.section.terrain.includes(null)) this.sampleTerrain();
     });
     // frames for a new time arrive a moment after the slider moves
-    ice.onData = () => this.setAge(this.age);
+    main.ice.onData = () => this.setAge(this.age);
     document.getElementById("section-close")!.addEventListener("click", () => this.closeSection());
     new ResizeObserver(() => this.drawSection()).observe(this.sectionCanvas);
     window.addEventListener("keydown", (e) => {
       if (e.code === "Escape" && this.sectionStart) this.cancelSectionStart();
     });
+  }
+
+  /** Close popup, flow trace and cross-section, e.g. when the ice model on screen changes. */
+  reset() {
+    this.popup?.remove();
+    if (this.sectionStart) this.cancelSectionStart();
+    this.closeSection();
+  }
+
+  private use(model: InspectModel) {
+    if (model === this.model) return;
+    this.reset(); // what is open belongs to the other model's grid
+    this.model = model;
+    model.ice.onData = () => this.setAge(this.age);
   }
 
   setAge(age: number) {
@@ -150,6 +192,7 @@ export class Inspector {
   private open(lngLat: LngLat) {
     // close the previous popup first: its close handler clears the selected place
     this.popup?.remove();
+    this.use(this.pick(lngLat));
     const [u, v] = this.toUv(lngLat);
     const place = { lngLat, u, v, series: null as Float32Array | null };
     this.place = place;
@@ -218,15 +261,16 @@ export class Inspector {
   }
 
   private loadHistory() {
-    const { history, deglaciation, width, height } = this.manifest;
+    const model = this.model;
+    const { history, deglaciation, width, height } = model.manifest;
     if (!history) return Promise.resolve();
-    return (this.historyLoading ??= Promise.all([
+    return (model.historyLoading ??= Promise.all([
       fetchBytes(history.file).then((bytes) => {
-        this.history = bytes;
+        model.history = bytes;
       }),
       deglaciation
         ? fetchRaster(deglaciation.frames[0].file, width, height, deglaciation).then((raster) => {
-            this.lastIce = raster;
+            model.lastIce = raster;
           })
         : null,
     ]).then(() => undefined));
@@ -247,6 +291,7 @@ export class Inspector {
     const now = this.ice.sample(place.u, place.v);
     const ground = this.terrainAt(place.lngLat);
     const lines: string[] = [];
+    if (this.model.label) lines.push(this.model.label);
     if (!now) {
       lines.push("Outside the modelled area.");
     } else {
@@ -305,7 +350,9 @@ export class Inspector {
     }
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    for (const age of [100, 50, 0]) ctx.fillText(age ? `${age} ka` : "today", Math.min(x(age), w - 30), h - pad.b + 5);
+    const last = ages[ages.length - 1];
+    const marks = maxAge > 60 ? [100, 50, last] : [30, 20, 10];
+    for (const age of marks) ctx.fillText(age < 0.05 ? "today" : `${Math.round(age)} ka`, Math.min(x(age), w - 30), h - pad.b + 5);
 
     ctx.beginPath();
     ctx.moveTo(x(ages[0]), y(0));
@@ -448,7 +495,7 @@ export class Inspector {
     note.textContent = ` ${starts.length > 1 ? `${starts.length} paths. ` : ""}Follows the flow of ${age.toFixed(1)} ka as if it stayed unchanged.`;
     this.traceText.replaceChildren(
       swatch(UPSTREAM),
-      `Comes from: ${sources}. ${span(up, (t) => t.metres, 1000, 1)} km upstream, ${years(up)} years of travel at these speeds.`,
+      `${this.manifest.debris?.regions?.length ? `Comes from: ${sources}. ` : "Comes from "}${span(up, (t) => t.metres, 1000, 1)} km upstream, ${years(up)} years of travel at these speeds.`,
       document.createElement("br"),
       swatch(DOWNSTREAM),
       `Flows on for ${span(down, (t) => t.metres, 1000, 1)} km (${years(down)} years) to the margin or a stagnant spot.`,

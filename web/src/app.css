@@ -793,3 +793,31 @@ button.era {
     display: none;
   }
 }
+
+/* span of the time bar where the second ice model applies */
+#model-band {
+  position: absolute;
+  top: 16px;
+  bottom: 18px;
+  box-sizing: border-box;
+  border: 1px dashed rgba(209, 52, 47, 0.75);
+  border-top: 0;
+  border-bottom: 2px solid rgba(209, 52, 47, 0.75);
+  background: rgba(209, 52, 47, 0.07);
+  color: #a3221e;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 13px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+#menu div.info-text p {
+  margin: 0 0 6px;
+}
+
+#menu label.range > span .info {
+  margin-left: 4px;
+}

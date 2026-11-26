@@ -56,6 +56,7 @@ export class RecentEra {
   private backdrop: Backdrop = "maps";
   private backdropOpacity = 1;
   private showGlaciers = true;
+  private solid = false;
   private shown: [number, number] = [-1, -1];
   private tileKey = "";
   private tileTimer = 0;
@@ -98,7 +99,9 @@ export class RecentEra {
     if (this.data) this.apply();
   }
 
-  setGlaciers(show: boolean) {
+  /** @param solid whether the lost ice is drawn in 3D as well: the flat fill then steps back */
+  setGlaciers(show: boolean, solid: boolean) {
+    this.solid = solid;
     this.showGlaciers = show;
     if (this.data) this.apply();
   }
@@ -172,7 +175,7 @@ export class RecentEra {
     // glaciers: the earlier inventory fades into the later one
     const glaciers = this.on && this.showGlaciers;
     const [a, b, t] = this.bracket();
-    const fill = this.backdrop === "none" ? 0.85 : 0.3; // maps and photographs show the ice themselves
+    const fill = this.backdrop === "none" && !this.solid ? 0.85 : 0.3; // maps, photographs and the 3D ice show the ice themselves
     [
       [a, 1 - t],
       [b, t],
