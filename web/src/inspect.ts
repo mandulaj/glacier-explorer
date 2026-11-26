@@ -30,6 +30,38 @@ interface Trace {
 
 const fmt = (n: number) => Math.round(n).toLocaleString("en");
 
+/**
+ * Round off a traced path (the velocity field is stored coarsely, which leaves
+ * kinks): a moving average, then two rounds of corner cutting.
+ */
+function smooth(points: number[]): number[] {
+  const n = points.length / 2;
+  if (n < 4) return points;
+  let p: number[] = [];
+  for (let i = 0; i < n; i++) {
+    let u = 0;
+    let v = 0;
+    let w = 0;
+    for (let k = Math.max(i - 2, 0); k <= Math.min(i + 2, n - 1); k++) {
+      u += points[k * 2];
+      v += points[k * 2 + 1];
+      w++;
+    }
+    // keep both ends where they are
+    p.push(i === 0 || i === n - 1 ? points[i * 2] : u / w, i === 0 || i === n - 1 ? points[i * 2 + 1] : v / w);
+  }
+  for (let round = 0; round < 2; round++) {
+    const q = [p[0], p[1]];
+    for (let i = 0; i + 3 < p.length; i += 2) {
+      q.push(0.75 * p[i] + 0.25 * p[i + 2], 0.75 * p[i + 1] + 0.25 * p[i + 3]);
+      q.push(0.25 * p[i] + 0.75 * p[i + 2], 0.25 * p[i + 1] + 0.75 * p[i + 3]);
+    }
+    q.push(p[p.length - 2], p[p.length - 1]);
+    p = q;
+  }
+  return p;
+}
+
 export class Inspector {
   private popup: Popup | null = null;
   private place: { lngLat: LngLat; u: number; v: number; series: Float32Array | null } | null = null;
@@ -323,15 +355,26 @@ export class Inspector {
     const up = starts.map(([u, v]) => this.follow(flow, u, v, -1));
     const down = starts.map(([u, v]) => this.follow(flow, u, v, 1));
 
-    // many faint paths add up to a density; the path from the clicked point is drawn solid
-    const alpha = starts.length > 1 ? 0.22 : 1;
+    // Soft ribbons that add up to a density (brightest where most paths run), with pulses
+    // moving the way the ice moves: towards the clicked point upstream, away from it downstream.
+    const period = 9000 / metresPerUnit / (b[2] - b[0]); // a pulse every 9 km
+    const many = starts.length > 1;
+    const ribbon = (traces: Trace[], color: [number, number, number], direction: 1 | -1) => ({
+      paths: traces.map((t) => smooth(t.points)),
+      color,
+      alpha: many ? 0.11 : 0.75,
+      width: many ? 7 : 5,
+      soft: true,
+      pulse: { period, direction },
+    });
     this.ice.setTraces("flow", [
-      { paths: up.map((t) => t.points), color: UPSTREAM, alpha, width: 2.4 },
-      { paths: down.map((t) => t.points), color: DOWNSTREAM, alpha, width: 2.4 },
-      ...(starts.length > 1
+      ribbon(up, UPSTREAM, -1),
+      ribbon(down, DOWNSTREAM, 1),
+      // the path from the clicked point itself, as a fine core line
+      ...(many
         ? [
-            { paths: [up[0].points], color: UPSTREAM, width: 1.4 },
-            { paths: [down[0].points], color: DOWNSTREAM, width: 1.4 },
+            { paths: [smooth(up[0].points)], color: UPSTREAM, alpha: 0.9, width: 1.1 },
+            { paths: [smooth(down[0].points)], color: DOWNSTREAM, alpha: 0.9, width: 1.1 },
           ]
         : []),
     ]);
@@ -486,7 +529,7 @@ export class Inspector {
     const onIce: number[] = [];
     for (let i = 0; i < SECTION_SAMPLES; i += 4) onIce.push(...this.toUv(this.sectionPoint(i)));
     onIce.push(...this.toUv(s.b));
-    this.ice.setTraces("section", [{ paths: [onIce], color: SECTION_COLOR, width: 1.6 }]);
+    this.ice.setTraces("section", [{ paths: [onIce], color: SECTION_COLOR, width: 0.9 }]);
     this.sectionTitle.textContent = `Cross-section A to B · ${(s.a.distanceTo(s.b) / 1000).toFixed(1)} km · drag A or B to move`;
     this.sampleTerrain();
   }

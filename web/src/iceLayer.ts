@@ -424,6 +424,7 @@ export class IceLayer implements CustomLayerInterface {
       this.tracesChanged = false;
     }
     this.traces?.render(gl, state);
+    if (this.traces?.animated) this.map.triggerRepaint(); // pulses travelling along the flow paths
 
     if (this.showDebris && this.debrisData) {
       this.debris ??= new DebrisPaths(gl, this.debrisData, this.manifest.debris!.regions.map((r) => r.color));
