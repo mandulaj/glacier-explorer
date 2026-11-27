@@ -1,6 +1,6 @@
 /** Colour ramps for the ice display modes, shared by shaders (as LUT textures), canvas layers and legends. */
 
-export type IceMode = "plain" | "speed" | "sliding" | "temperature" | "erosion" | "deglaciation";
+export type IceMode = "plain" | "thickness" | "speed" | "sliding" | "temperature" | "erosion" | "deglaciation";
 
 export interface Ramp {
   title: string;
@@ -10,6 +10,23 @@ export interface Ramp {
 }
 
 export const RAMPS: Record<Exclude<IceMode, "plain">, Ramp> = {
+  thickness: {
+    title: "Ice thickness (m)",
+    stops: [
+      [0, "#f3f8fc"],
+      [0.25, "#9fd0e8"],
+      [0.5, "#3f8fd0"],
+      [0.75, "#3a3fa8"],
+      [1, "#3b0f5c"],
+    ],
+    ticks: [
+      [0, "0"],
+      [0.25, "500"],
+      [0.5, "1000"],
+      [0.75, "1500"],
+      [1, "2000+"],
+    ],
+  },
   speed: {
     title: "Surface speed (m / year)",
     stops: [

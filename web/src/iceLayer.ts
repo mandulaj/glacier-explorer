@@ -22,8 +22,10 @@ import { bindSurface, createProgram, EARTH_CIRCUMFERENCE, FLOW_GLSL, SURFACE_GLS
 const FINE_MAX_RATE = 1.5; // ka / s; above this only the 1 ka frames are used
 const MESH_STEP = 2; // mesh cell = 2 data pixels (~1.5 km); the modelled surface is smooth
 
-const MODE_INDEX: Record<IceMode, number> = { plain: 0, speed: 1, sliding: 2, temperature: 3, erosion: 0, deglaciation: 0 };
+const MODE_INDEX: Record<IceMode, number> = { plain: 0, thickness: 4, speed: 1, sliding: 2, temperature: 3, erosion: 0, deglaciation: 0 };
 /** modes that colour the ground: the ice is drawn faint so the ground shows through */
+/** modes read from the flow frames; thickness comes with the ice itself */
+const FLOW_MODES: IceMode[] = ["speed", "sliding", "temperature"];
 const GROUND_MODES: IceMode[] = ["erosion", "deglaciation"];
 
 const VERT = `#version 300 es
@@ -74,9 +76,11 @@ void main() {
   vec3 color = mix(vec3(0.60, 0.80, 0.94), vec3(0.90, 0.95, 1.0), deep);
 
   if (u_mode > 0) {
-    vec4 texel = flowTexel(v_uv);
+    vec4 texel = u_mode == 4 ? vec4(0.0) : flowTexel(v_uv);
     float t;
-    if (u_mode == 1) {
+    if (u_mode == 4) {
+      t = v_thk / 2000.0;
+    } else if (u_mode == 1) {
       t = log(max(length(velocity(texel)), 1.0)) / log(1000.0);
     } else if (u_mode == 2) {
       t = log(max(exp(texel.b / 255.0 * LOG_VMAX) - 1.0, 1.0)) / log(1000.0);
@@ -236,7 +240,7 @@ export class IceLayer implements CustomLayerInterface {
   }
 
   private get needsFlow() {
-    return this.hasFlow && (this.showParticles || MODE_INDEX[this.mode] > 0);
+    return this.hasFlow && (this.showParticles || FLOW_MODES.includes(this.mode));
   }
 
   get currentAge() {
@@ -287,7 +291,7 @@ export class IceLayer implements CustomLayerInterface {
     this.iceTextures = new TextureCache(gl, (d) => this.floatTexture(d), 12);
     this.coarseTextures = new TextureCache(gl, (d) => this.floatTexture(d), 6);
     this.flowTextures = new TextureCache(gl, (d) => this.texture(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, d, width, height, gl.LINEAR), 8);
-    for (const mode of ["speed", "sliding", "temperature"] as const) {
+    for (const mode of ["thickness", "speed", "sliding", "temperature"] as const) {
       this.luts.set(mode, this.texture(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, rampTable(RAMPS[mode]), 256, 1, gl.LINEAR));
     }
     this.particles = new Particles(gl);
@@ -403,7 +407,7 @@ export class IceLayer implements CustomLayerInterface {
       flowMix: flow?.mix ?? 0,
     };
 
-    const mode = flow ? MODE_INDEX[this.mode] : 0;
+    const mode = flow || !FLOW_MODES.includes(this.mode) ? MODE_INDEX[this.mode] : 0;
     const u = this.uniforms;
     gl.useProgram(this.program);
     bindSurface(gl, u, state);
@@ -467,7 +471,7 @@ export class IceLayer implements CustomLayerInterface {
       this.particles.render(gl, state, {
         view: this.viewRect(),
         viewport: [canvas.width, canvas.height],
-        light: this.mode === "speed" || this.mode === "sliding" || this.mode === "temperature",
+        light: MODE_INDEX[this.mode] > 0,
       });
       this.map.triggerRepaint(); // keep animating
     }

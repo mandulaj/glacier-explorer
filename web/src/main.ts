@@ -181,7 +181,7 @@ async function main() {
     swiss.exaggeration = ice.exaggeration;
     swiss.showContourLabels = ice.showContourLabels;
     // the 500 m model has surface velocity only: speed colouring and particles, nothing basal
-    swiss.mode = ice.mode === "erosion" || ice.mode === "deglaciation" || ice.mode === "speed" ? ice.mode : "plain";
+    swiss.mode = ice.mode === "erosion" || ice.mode === "deglaciation" || ice.mode === "speed" || ice.mode === "thickness" ? ice.mode : "plain";
     swiss.showParticles = ice.showParticles;
     if (active !== swissActive) {
       swissActive = active;
@@ -621,7 +621,7 @@ function bindIceModes(map: maplibregl.Map, ice: IceLayer, ground: Partial<Record
 
   for (const option of Array.from(select.options)) {
     const mode = option.value as IceMode;
-    option.disabled = mode === "erosion" || mode === "deglaciation" ? !ground[mode] : mode !== "plain" && !ice.hasFlow;
+    option.disabled = mode === "erosion" || mode === "deglaciation" ? !ground[mode] : mode !== "plain" && mode !== "thickness" && !ice.hasFlow;
   }
   particles.disabled = !ice.hasFlow;
 
