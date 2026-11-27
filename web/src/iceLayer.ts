@@ -22,10 +22,10 @@ import { bindSurface, createProgram, EARTH_CIRCUMFERENCE, FLOW_GLSL, SURFACE_GLS
 const FINE_MAX_RATE = 1.5; // ka / s; above this only the 1 ka frames are used
 const MESH_STEP = 2; // mesh cell = 2 data pixels (~1.5 km); the modelled surface is smooth
 
-const MODE_INDEX: Record<IceMode, number> = { plain: 0, thickness: 4, speed: 1, sliding: 2, temperature: 3, erosion: 0, deglaciation: 0 };
+const MODE_INDEX: Record<IceMode, number> = { plain: 0, thickness: 4, speed: 1, direction: 5, sliding: 2, temperature: 3, erosion: 0, deglaciation: 0 };
 /** modes that colour the ground: the ice is drawn faint so the ground shows through */
 /** modes read from the flow frames; thickness comes with the ice itself */
-const FLOW_MODES: IceMode[] = ["speed", "sliding", "temperature"];
+const FLOW_MODES: IceMode[] = ["speed", "direction", "sliding", "temperature"];
 const GROUND_MODES: IceMode[] = ["erosion", "deglaciation"];
 
 const VERT = `#version 300 es
@@ -78,8 +78,13 @@ void main() {
   if (u_mode > 0) {
     vec4 texel = u_mode == 4 ? vec4(0.0) : flowTexel(v_uv);
     float t;
+    float still = 0.0; // direction means little where the ice hardly moves
     if (u_mode == 4) {
       t = v_thk / 2000.0;
+    } else if (u_mode == 5) {
+      vec2 v = velocity(texel);
+      t = fract(atan(v.x, v.y) / 6.2831853 + 1.0); // compass bearing: 0 north, 0.25 east
+      still = 1.0 - smoothstep(0.5, 5.0, length(v));
     } else if (u_mode == 1) {
       t = log(max(length(velocity(texel)), 1.0)) / log(1000.0);
     } else if (u_mode == 2) {
@@ -89,6 +94,7 @@ void main() {
       t = below < 0.15 ? 1.0 : 0.9 * (1.0 - clamp(below / 8.0, 0.0, 1.0));
     }
     color = texture(u_lut, vec2(clamp(t, 0.0, 1.0) * (255.0 / 256.0) + 0.5 / 256.0, 0.5)).rgb;
+    color = mix(color, vec3(0.90, 0.93, 0.96), still);
   }
   color *= shade;
 
@@ -291,7 +297,7 @@ export class IceLayer implements CustomLayerInterface {
     this.iceTextures = new TextureCache(gl, (d) => this.floatTexture(d), 12);
     this.coarseTextures = new TextureCache(gl, (d) => this.floatTexture(d), 6);
     this.flowTextures = new TextureCache(gl, (d) => this.texture(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, d, width, height, gl.LINEAR), 8);
-    for (const mode of ["thickness", "speed", "sliding", "temperature"] as const) {
+    for (const mode of ["thickness", "speed", "direction", "sliding", "temperature"] as const) {
       this.luts.set(mode, this.texture(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, rampTable(RAMPS[mode]), 256, 1, gl.LINEAR));
     }
     this.particles = new Particles(gl);

@@ -181,7 +181,7 @@ async function main() {
     swiss.exaggeration = ice.exaggeration;
     swiss.showContourLabels = ice.showContourLabels;
     // the 500 m model has surface velocity only: speed colouring and particles, nothing basal
-    swiss.mode = ice.mode === "erosion" || ice.mode === "deglaciation" || ice.mode === "speed" || ice.mode === "thickness" ? ice.mode : "plain";
+    swiss.mode = ice.mode === "erosion" || ice.mode === "deglaciation" || ice.mode === "speed" || ice.mode === "direction" || ice.mode === "thickness" ? ice.mode : "plain";
     swiss.showParticles = ice.showParticles;
     if (active !== swissActive) {
       swissActive = active;
