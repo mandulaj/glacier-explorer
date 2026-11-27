@@ -18,6 +18,10 @@
             Terrain from <a href="https://mapterhorn.com/attribution/" target="_blank" rel="noopener">Mapterhorn</a>
             (swisstopo, BEV, IGN and others); places and borders from OpenStreetMap via OpenFreeMap.
             Turn the shading down to zero for a plain black-and-white map.
+            Other maps: the national map of Switzerland in its summer and winter editions
+            (<a href="https://www.swisstopo.admin.ch" target="_blank" rel="noopener">swisstopo</a>, Switzerland only)
+            and Esri World Imagery (worldwide). They show today's surface, lakes and glaciers included, also under the ice of the past.
+            In the view since 1850 the choice is between swisstopo's historic maps and aerial photographs of the chosen year.
             Seabed from <a href="https://emodnet.ec.europa.eu/en/bathymetry" target="_blank" rel="noopener">EMODnet Bathymetry</a>
             around the Alps and coarser global terrain tiles elsewhere;
             the sea follows global mean sea level
@@ -26,8 +30,16 @@
           </p>
           <label class="range">Relief shading <input type="range" id="shading" min="0" max="1" step="0.05" value="0.55" /></label>
           <label><input type="checkbox" id="sea-visible" checked /> Sea, level <output id="sea-level">as today</output></label>
+          <label class="range" id="basemap-menu">Map
+            <select id="basemap">
+              <option value="relief">Shaded relief</option>
+              <option value="swiss">swisstopo map</option>
+              <option value="swiss-winter">swisstopo winter map</option>
+              <option value="imagery">Satellite imagery (Esri)</option>
+            </select>
+          </label>
           <div id="recent-backdrop-menu" hidden>
-            <label class="range">Historic imagery
+            <label class="range">Map
               <select id="recent-backdrop">
                 <option value="maps">Historic maps</option>
                 <option value="photos">Aerial photographs</option>
@@ -35,7 +47,7 @@
               </select>
             </label>
             <p class="note" id="recent-backdrop-note"></p>
-            <label class="range">Imagery opacity <input type="range" id="recent-opacity" min="0" max="1" step="0.05" value="1" /></label>
+            <label class="range">Map opacity <input type="range" id="recent-opacity" min="0" max="1" step="0.05" value="1" /></label>
           </div>
         </fieldset>
         <fieldset>

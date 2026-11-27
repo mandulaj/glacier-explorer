@@ -55,6 +55,62 @@ function modelToUrl(model: string) {
   history.replaceState(history.state, "", `#${parts.join("&")}`);
 }
 
+/** Raster maps that can replace the shaded relief. */
+const BASEMAPS: Record<string, { tiles: string; attribution: string; maxzoom: number; bounds?: [number, number, number, number] }> = {
+  swiss: {
+    tiles: "https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/default/current/3857/{z}/{x}/{y}.jpeg",
+    attribution: '© <a href="https://www.swisstopo.admin.ch" target="_blank" rel="noopener">swisstopo</a>',
+    maxzoom: 17,
+    bounds: [5.1, 45.3, 11.5, 48.3],
+  },
+  "swiss-winter": {
+    tiles: "https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe-winter/default/current/3857/{z}/{x}/{y}.jpeg",
+    attribution: '© <a href="https://www.swisstopo.admin.ch" target="_blank" rel="noopener">swisstopo</a>',
+    maxzoom: 17,
+    bounds: [5.1, 45.3, 11.5, 48.3],
+  },
+  imagery: {
+    tiles: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attribution: "Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community",
+    maxzoom: 18,
+  },
+};
+
+/** Map of the base map menu, `b=` in the URL; the view since 1850 brings its own maps and hides it. */
+let setBasemapHidden: (hidden: boolean) => void = () => {};
+
+function bindBasemap(map: maplibregl.Map) {
+  const select = document.getElementById("basemap") as HTMLSelectElement;
+  const fromUrl = location.hash.slice(1).split("&").find((part) => part.startsWith("b="))?.slice(2);
+  if (fromUrl && fromUrl in BASEMAPS) select.value = fromUrl;
+  let hidden = false;
+  const apply = () => {
+    for (const [key, def] of Object.entries(BASEMAPS)) {
+      const id = `basemap-${key}`;
+      const on = !hidden && select.value === key;
+      if (on && !map.getLayer(id)) {
+        map.addSource(id, { type: "raster", tiles: [def.tiles], tileSize: 256, maxzoom: def.maxzoom, attribution: def.attribution, ...(def.bounds ? { bounds: def.bounds } : {}) });
+        // under the historic maps of the view since 1850, if they are there already
+        map.addLayer({ id, type: "raster", source: id }, map.getLayer("recent-maps") ? "recent-maps" : "coast");
+      }
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
+    }
+  };
+  select.addEventListener("change", () => {
+    const parts = location.hash.slice(1).split("&").filter((part) => part && !part.startsWith("b="));
+    if (select.value !== "relief") parts.push(`b=${select.value}`);
+    history.replaceState(history.state, "", `#${parts.join("&")}`);
+    apply();
+  });
+  setBasemapHidden = (value) => {
+    hidden = value;
+    document.getElementById("basemap-menu")!.hidden = value;
+    apply();
+  };
+  if (map.isStyleLoaded()) apply();
+  else map.once("load", apply);
+}
+
 let urlTimer = 0;
 function ageToUrl(age: number) {
   clearTimeout(urlTimer);
@@ -446,6 +502,7 @@ function bindRecent(map: maplibregl.Map, onSwitch: (on: boolean) => void): Recen
     el("recentbar").hidden = !on;
     el("recent-menu").hidden = !on;
     el("recent-backdrop-menu").hidden = !on;
+    setBasemapHidden(on);
     el("ice-menu").hidden = on;
     // ice colouring and its legend belong to the ice age: set aside, and restored on the way back
     const mode = el<HTMLSelectElement>("ice-mode");
@@ -492,6 +549,8 @@ function bindMenu(map: maplibregl.Map, ice: IceLayer, sea: SeaLayer | null, redr
   );
 
   const whenReady = (fn: () => void) => (map.isStyleLoaded() ? fn() : map.once("load", fn));
+
+  bindBasemap(map);
 
   const shading = document.getElementById("shading") as HTMLInputElement;
   shading.addEventListener("input", () => {

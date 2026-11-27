@@ -632,6 +632,7 @@ kbd {
 }
 
 /* --- since 1850: a time bar of its own, in calendar years --- */
+#basemap-menu[hidden],
 #timebar[hidden],
 #recentbar[hidden] {
   display: none;
