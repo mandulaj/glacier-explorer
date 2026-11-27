@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <title>Alpine Ice Age Explorer</title>
+    <meta name="description" content="Explore the glaciers of the Alps in 3D: the ice sheets of the last 120 000 years, Swiss glaciers since 1850 on historic maps, and a projection to 2100." />
+    <!-- link previews (WhatsApp, Signal, Slack, ...) are built from these, without running the page -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Alpine Ice Age Explorer" />
+    <meta property="og:title" content="Alpine Ice Age Explorer" />
+    <meta property="og:description" content="Explore the glaciers of the Alps in 3D: the ice sheets of the last 120 000 years, Swiss glaciers since 1850 on historic maps, and a projection to 2100." />
+    <meta property="og:url" content="https://mandulaj.github.io/glacier-explorer/" />
+    <meta property="og:image" content="https://mandulaj.github.io/glacier-explorer/preview.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="The Alps under the ice of the last glacial maximum, seen from the south" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script type="module" crossorigin src="./assets/index-DQFSog6f.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DKH38rhn.css">
+  </head>
+  <body>
+    <div id="map"></div>
+
+    <aside id="menu">
+      <button id="menu-toggle" aria-expanded="true" aria-controls="menu-body">Layers</button>
+      <div id="menu-body">
+        <fieldset>
+          <legend>Base map <button type="button" class="info" aria-expanded="false" aria-controls="info-base" aria-label="About the map data">i</button></legend>
+          <p class="info-text" id="info-base" hidden>
+            Terrain from <a href="https://mapterhorn.com/attribution/" target="_blank" rel="noopener">Mapterhorn</a>
+            (swisstopo, BEV, IGN and others); places and borders from OpenStreetMap via OpenFreeMap.
+            Turn the shading down to zero for a plain black-and-white map.
+            Other maps: the national map of Switzerland in its summer and winter editions
+            (<a href="https://www.swisstopo.admin.ch" target="_blank" rel="noopener">swisstopo</a>, Switzerland only)
+            and Esri World Imagery (worldwide). They show today's surface, lakes and glaciers included, also under the ice of the past.
+            The historic maps and aerial photographs of swisstopo follow the year of the view since 1850; in the ice age view they stay at the year last chosen there.
+            Seabed from <a href="https://emodnet.ec.europa.eu/en/bathymetry" target="_blank" rel="noopener">EMODnet Bathymetry</a>
+            around the Alps and coarser global terrain tiles elsewhere;
+            the sea follows global mean sea level
+            (<a href="https://doi.org/10.5194/cp-12-1079-2016" target="_blank" rel="noopener">Spratt &amp; Lisiecki 2016</a>),
+            so past shorelines are indicative: local land movement is not included.
+          </p>
+          <label class="range">Relief shading <input type="range" id="shading" min="0" max="1" step="0.05" value="0.55" /></label>
+          <label><input type="checkbox" id="sea-visible" checked /> Sea, level <output id="sea-level">as today</output></label>
+          <label class="range">Map
+            <select id="basemap">
+              <option value="relief">Shaded relief</option>
+              <option value="swiss">swisstopo map</option>
+              <option value="swiss-winter">swisstopo winter map</option>
+              <option value="imagery">Satellite imagery (Esri)</option>
+              <option value="maps">Historic maps (swisstopo)</option>
+              <option value="photos">Historic aerial photographs</option>
+            </select>
+          </label>
+          <p class="note" id="recent-backdrop-note"></p>
+          <label class="range" id="basemap-opacity-menu" hidden>Map opacity <input type="range" id="basemap-opacity" min="0" max="1" step="0.05" value="1" /></label>
+        </fieldset>
+        <fieldset>
+          <legend>Labels</legend>
+          <label><input type="checkbox" data-group="borders" checked /> Borders &amp; coast</label>
+          <label><input type="checkbox" data-group="towns" checked /> Towns</label>
+          <label><input type="checkbox" data-group="summits" checked /> Summits</label>
+          <label><input type="checkbox" data-group="water" checked /> Lakes &amp; rivers</label>
+        </fieldset>
+        <fieldset id="recent-menu" hidden>
+          <legend>Since 1850 <button type="button" class="info" aria-expanded="false" aria-controls="info-recent" aria-label="About the data since 1850">i</button></legend>
+          <p class="info-text" id="info-recent" hidden>
+            Switzerland only. Glacier outlines from the Swiss Glacier Inventories of 1850, 1931, 1973, 2010 and 2016
+            (<a href="https://www.glamos.ch/en/downloads#inventories" target="_blank" rel="noopener">GLAMOS</a>, CC BY 4.0).
+            Between two inventories the earlier outline fades into the later one, and the area is interpolated:
+            glaciers did not shrink that evenly. Historic national maps (from 1844) and aerial photographs (from 1926,
+            the latest six years of flights shown together) are served by
+            <a href="https://www.swisstopo.admin.ch/en/timetravel" target="_blank" rel="noopener">swisstopo</a>.
+            The terrain is today's throughout. "Lost ice in 3D" puts back the ice that stood above it:
+            the reconstructed glacier surface of about 1850
+            (<a href="https://doi.org/10.5281/zenodo.14336827" target="_blank" rel="noopener">Reinthaler &amp; Paul 2025</a>).
+            Only 1850 is data: towards today that ice is thinned in step with the area loss inside the inventory outlines.
+            After 2025 the bar runs on to 2100 with a model projection, so far only for the Great Aletsch Glacier and the glaciers connected to it:
+            our own runs of the <a href="https://github.com/instructed-glacier-model/igm" target="_blank" rel="noopener">Instructed Glacier Model</a>
+            with glacier data from <a href="https://oggm.org" target="_blank" rel="noopener">OGGM</a>, under two idealised
+            temperature paths. They are not calibrated against the measured retreat and are not published projections:
+            read them as an illustration of the mechanism. The thinning ice sinks below today's terrain, so it is shown
+            as colour on the ground instead of in 3D.
+          </p>
+          <label><input type="checkbox" id="recent-glaciers" checked /> Glacier extent</label>
+          <label><input type="checkbox" id="recent-3d" checked /> Lost ice in 3D</label>
+          <div id="future-menu" hidden>
+            <label class="range">After 2025: projection
+              <select id="future-scenario"></select>
+            </label>
+            <p class="note" id="future-note"></p>
+            <div id="future-legend" hidden>
+              <span class="bar" id="future-bar"></span>
+              <span class="scale"><span>0</span><span>300</span><span>600 m of ice left</span></span>
+              <span class="gone"><i id="future-gone"></i> ice gone since 2020</span>
+            </div>
+            <button type="button" id="future-fly">Show the Aletsch area</button>
+          </div>
+        </fieldset>
+        <fieldset id="ice-menu">
+          <legend>Ice <button type="button" class="info" aria-expanded="false" aria-controls="info-ice" aria-label="About the ice data">i</button></legend>
+          <p class="info-text" id="info-ice" hidden>
+            Ice from a PISM simulation at 1&nbsp;km resolution,
+            <a href="https://doi.org/10.5194/tc-12-3265-2018" target="_blank" rel="noopener">Seguinot et al. 2018</a>.
+            Click the map for the ice history of a place, the source of its ice, or a cross-section.
+            It is a model result, not a reconstruction: thickness is likely overestimated, and the present-day
+            state is not today's glaciers. Erosion is a relative potential, and debris sources are assigned by
+            nearest massif.
+            Zoom out for the ice sheet over northern Europe. It is not part of the simulation: flat outlines
+            from geological reconstructions, every thousand years from 25 to 10&nbsp;ka
+            (<a href="https://doi.org/10.1111/bor.12142" target="_blank" rel="noopener">DATED-1, Hughes et al. 2016</a>),
+            coarser before, and before 38&nbsp;ka one outline per climate stage
+            (<a href="https://doi.org/10.1038/s41467-019-11601-2" target="_blank" rel="noopener">Batchelor et al. 2019</a>),
+            faded into each other in between.
+          </p>
+          <label><input type="checkbox" id="ice-visible" checked /> Show ice</label>
+          <label class="range"><span>Ice model <button type="button" class="info" aria-expanded="false" aria-controls="info-model" aria-label="About the ice models">i</button></span>
+            <select id="ice-model">
+              <option value="alps">Whole Alps, 1 km grid</option>
+              <option value="swiss">Switzerland, 500 m grid (37–7 ka)</option>
+            </select>
+          </label>
+          <p class="note" id="ice-model-note" hidden></p>
+          <div class="info-text" id="info-model" hidden>
+            <p>
+              <strong>Whole Alps, 1 km.</strong> PISM simulation of the whole glacial cycle, 120&nbsp;000 years to
+              today, driven by a scaled ice-core temperature record
+              (<a href="https://doi.org/10.5194/tc-12-3265-2018" target="_blank" rel="noopener">Seguinot et al. 2018</a>;
+              <a href="https://doi.org/10.5281/zenodo.7802275" target="_blank" rel="noopener">data</a>).
+              Has every view: flow, sliding, bed temperature, erosion, debris. Its ice is likely too thick.
+            </p>
+            <p>
+              <strong>Switzerland, 500 m.</strong> The
+              <a href="https://swiss-time-machine.org" target="_blank" rel="noopener">Swiss Time Machine</a> simulation
+              with the IGM model (<a href="https://doi.org/10.5281/zenodo.24003777" target="_blank" rel="noopener">data</a>),
+              built on <a href="https://doi.org/10.1038/s41467-025-56168-3" target="_blank" rel="noopener">Leger et al. 2025</a>,
+              a model tuned to field evidence. Finer and thinner ice, but only Switzerland and 37 to 7&nbsp;ka
+              (marked on the time bar), and published as a visualisation, not as scientific results.
+              It comes with surface speed only: the flow direction shown is derived here from the slope of the
+              ice surface. Sliding, bed temperature, erosion and debris stay with the 1&nbsp;km model, and
+              flow traces and cross-sections end at the edge of its area.
+            </p>
+          </div>
+          <label><input type="checkbox" id="context-ice" checked /> Northern ice sheet <output id="context-info"></output></label>
+          <label><input type="checkbox" id="contour-labels" checked /> Contour heights (m)</label>
+          <label><input type="checkbox" id="particles" /> Flow particles</label>
+          <label><input type="checkbox" id="debris" /> Debris transport &amp; deposits</label>
+          <div id="debris-legend" hidden></div>
+          <label class="range">Colour by
+            <select id="ice-mode">
+              <option value="plain">Ice (plain)</option>
+              <option value="thickness">Ice thickness</option>
+              <option value="speed">Surface speed</option>
+              <option value="direction">Flow direction</option>
+              <option value="sliding">Basal sliding (grinding)</option>
+              <option value="temperature">Frozen or sliding base</option>
+              <option value="erosion">Cumulative erosion</option>
+              <option value="deglaciation">Ice-free since (ground)</option>
+            </select>
+          </label>
+          <label class="range">Opacity <input type="range" id="ice-opacity" min="0.2" max="1" step="0.05" value="0.9" /></label>
+          <label class="range">Relief ×<output id="exag-out">1.0</output>
+            <input type="range" id="exaggeration" min="1" max="3" step="0.1" value="1" /></label>
+        </fieldset>
+        <fieldset>
+          <legend>Fly <button type="button" class="info" aria-expanded="false" aria-controls="info-fly" aria-label="Flying controls">i</button></legend>
+          <p class="info-text keys" id="info-fly" hidden><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move<br />
+            <kbd>E</kbd> up · <kbd>Q</kbd> down<br />
+            <kbd>F</kbd> mouse look, <kbd>Esc</kbd> releases<br />
+            <kbd>P</kbd> play / pause time</p>
+          <button id="look" type="button">Mouse look</button>
+        </fieldset>
+      </div>
+    </aside>
+
+    <div id="legend" hidden>
+      <div id="legend-title"></div>
+      <div id="legend-bar"></div>
+      <div id="legend-ticks"></div>
+    </div>
+
+    <div id="map-hint" hidden></div>
+
+    <section id="section" hidden>
+      <header><span id="section-title">Cross-section</span><button id="section-close" type="button" aria-label="Close cross-section">×</button></header>
+      <canvas id="section-canvas"></canvas>
+    </section>
+
+    <footer id="timebar">
+      <button id="play" aria-label="Play">▶</button>
+      <div id="readout">
+        <strong id="age-label">24.0 ka</strong>
+        <span id="age-sub">years ago</span>
+        <span id="age-period"></span>
+      </div>
+      <div id="track">
+        <div id="periods"></div>
+        <div id="model-band" hidden></div>
+        <canvas id="curve"></canvas>
+        <input type="range" id="time" min="0" max="119" step="0.05" value="95" aria-label="Time" />
+        <div id="events"></div>
+        <div id="event-tip" hidden></div>
+        <div id="ticks"></div>
+      </div>
+      <select id="speed" aria-label="Playback speed">
+        <option value="1">1 ka/s</option>
+        <option value="3" selected>3 ka/s</option>
+        <option value="10">10 ka/s</option>
+      </select>
+      <button type="button" id="era-recent" class="era" title="Glaciers in Switzerland since 1850, year by year">1850 – today ›</button>
+    </footer>
+
+    <footer id="recentbar" hidden>
+      <button id="recent-play" aria-label="Play">▶</button>
+      <div id="recent-readout">
+        <strong id="recent-year">2025</strong>
+        <span id="recent-sub"></span>
+      </div>
+      <div id="recent-track">
+        <input type="range" id="recent-time" min="1850" max="2025" step="1" value="2025" aria-label="Year" />
+        <div id="recent-future" hidden title="Model projection, for the Aletsch area only">projection</div>
+        <div id="recent-marks"></div>
+      </div>
+      <select id="recent-speed" aria-label="Playback speed">
+        <option value="5">5 years/s</option>
+        <option value="15" selected>15 years/s</option>
+        <option value="40">40 years/s</option>
+      </select>
+      <button type="button" id="era-iceage" class="era" title="Back to the ice age, 120 000 years to today">‹ Ice age</button>
+    </footer>
+
+  </body>
+</html>
