@@ -76,37 +76,38 @@ const BASEMAPS: Record<string, { tiles: string; attribution: string; maxzoom: nu
   },
 };
 
-/** Map of the base map menu, `b=` in the URL; the view since 1850 brings its own maps and hides it. */
-let setBasemapHidden: (hidden: boolean) => void = () => {};
-
+/**
+ * Map of the base map menu, `b=` in the URL. The historic maps and photographs in the same
+ * list belong to RecentEra (see bindRecent), which listens to the same controls.
+ */
 function bindBasemap(map: maplibregl.Map) {
   const select = document.getElementById("basemap") as HTMLSelectElement;
   const fromUrl = location.hash.slice(1).split("&").find((part) => part.startsWith("b="))?.slice(2);
-  if (fromUrl && fromUrl in BASEMAPS) select.value = fromUrl;
-  let hidden = false;
+  const opacity = document.getElementById("basemap-opacity") as HTMLInputElement;
+  if (fromUrl && [...select.options].some((o) => o.value === fromUrl)) select.value = fromUrl;
   const apply = () => {
     for (const [key, def] of Object.entries(BASEMAPS)) {
       const id = `basemap-${key}`;
-      const on = !hidden && select.value === key;
+      const on = select.value === key;
       if (on && !map.getLayer(id)) {
         map.addSource(id, { type: "raster", tiles: [def.tiles], tileSize: 256, maxzoom: def.maxzoom, attribution: def.attribution, ...(def.bounds ? { bounds: def.bounds } : {}) });
         // under the historic maps of the view since 1850, if they are there already
         map.addLayer({ id, type: "raster", source: id }, map.getLayer("recent-maps") ? "recent-maps" : "coast");
       }
-      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
+      if (map.getLayer(id)) {
+        map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
+        map.setPaintProperty(id, "raster-opacity", Number(opacity.value));
+      }
     }
+    document.getElementById("basemap-opacity-menu")!.hidden = select.value === "relief";
   };
+  opacity.addEventListener("input", apply);
   select.addEventListener("change", () => {
     const parts = location.hash.slice(1).split("&").filter((part) => part && !part.startsWith("b="));
     if (select.value !== "relief") parts.push(`b=${select.value}`);
     history.replaceState(history.state, "", `#${parts.join("&")}`);
     apply();
   });
-  setBasemapHidden = (value) => {
-    hidden = value;
-    document.getElementById("basemap-menu")!.hidden = value;
-    apply();
-  };
   if (map.isStyleLoaded()) apply();
   else map.once("load", apply);
 }
@@ -326,8 +327,8 @@ function bindRecent(map: maplibregl.Map, onSwitch: (on: boolean) => void): Recen
   const slider = el<HTMLInputElement>("recent-time");
   const play = el<HTMLButtonElement>("recent-play");
   const speed = el<HTMLSelectElement>("recent-speed");
-  const backdrop = el<HTMLSelectElement>("recent-backdrop");
-  const opacity = el<HTMLInputElement>("recent-opacity");
+  const backdrop = el<HTMLSelectElement>("basemap");
+  const opacity = el<HTMLInputElement>("basemap-opacity");
   const glaciers = el<HTMLInputElement>("recent-glaciers");
   slider.min = String(FIRST_YEAR);
   slider.max = String(END_YEAR); // cut back to today if there is no projection data
@@ -490,7 +491,8 @@ function bindRecent(map: maplibregl.Map, onSwitch: (on: boolean) => void): Recen
 
   const applyMenu = () => {
     applyFuture();
-    recent.setBackdrop(backdrop.value as Backdrop, Number(opacity.value));
+    const historic: Backdrop = backdrop.value === "maps" || backdrop.value === "photos" ? backdrop.value : "none";
+    recent.setBackdrop(historic, Number(opacity.value), backdrop.value === "relief");
     recent.setGlaciers(glaciers.checked, solid.checked && !solid.closest("label")!.hidden);
     applyLia();
   };
@@ -501,8 +503,6 @@ function bindRecent(map: maplibregl.Map, onSwitch: (on: boolean) => void): Recen
     el("timebar").hidden = on;
     el("recentbar").hidden = !on;
     el("recent-menu").hidden = !on;
-    el("recent-backdrop-menu").hidden = !on;
-    setBasemapHidden(on);
     el("ice-menu").hidden = on;
     // ice colouring and its legend belong to the ice age: set aside, and restored on the way back
     const mode = el<HTMLSelectElement>("ice-mode");
@@ -529,6 +529,7 @@ function bindRecent(map: maplibregl.Map, onSwitch: (on: boolean) => void): Recen
   el("era-iceage").addEventListener("click", () => setEra(false));
   const initial = yearFromUrl();
   if (initial !== null) setEra(true, initial);
+  else applyMenu(); // a historic map chosen in the URL shows in the ice age view too
   return recent;
 }
 

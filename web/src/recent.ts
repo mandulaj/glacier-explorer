@@ -56,7 +56,9 @@ export class RecentEra {
   private loading: Promise<void> | null = null;
   private on = false;
   private year = LAST_YEAR;
-  private backdrop: Backdrop = "maps";
+  private backdrop: Backdrop = "none";
+  private plain = true;
+  private backdropReady = false;
   private backdropOpacity = 1;
   private showGlaciers = true;
   private solid = false;
@@ -93,13 +95,18 @@ export class RecentEra {
 
   setYear(year: number) {
     this.year = year;
-    if (this.on && this.data) this.apply();
+    this.apply();
   }
 
-  setBackdrop(kind: Backdrop, opacity: number) {
+  /**
+   * The historic maps or photographs, in either view.
+   * @param plain whether the ground is the plain relief, with no map of any kind on it
+   */
+  setBackdrop(kind: Backdrop, opacity: number, plain: boolean) {
     this.backdrop = kind;
     this.backdropOpacity = opacity;
-    if (this.data) this.apply();
+    this.plain = plain;
+    this.apply();
   }
 
   /** @param solid whether the lost ice is drawn in 3D as well: the flat fill then steps back */
@@ -111,16 +118,6 @@ export class RecentEra {
 
   /** What is on screen, for the readout. */
   describe(): { glaciers: string; backdrop: string } {
-    const inv = this.inventories;
-    if (!inv.length) return { glaciers: "", backdrop: "" };
-    const [a, b, t] = this.bracket();
-    const area = Math.round((inv[a].area + (inv[b].area - inv[a].area) * t) / 10) * 10;
-    const exact = t < 0.02 ? inv[a] : t > 0.98 ? inv[b] : null;
-    const glaciers = exact
-      ? `${exact.name}: ${exact.area} km² of glaciers`
-      : this.year > inv[inv.length - 1].year
-        ? `latest inventory, ${inv[inv.length - 1].year}: ${inv[inv.length - 1].area} km²`
-        : `between the ${inv[a].year} and ${inv[b].year} inventories, about ${area} km²`;
     let backdrop = "";
     if (this.backdrop === "maps") backdrop = `national maps as of ${Math.min(this.year, MAP_YEARS[1])}`;
     if (this.backdrop === "photos") {
@@ -129,15 +126,32 @@ export class RecentEra {
           ? `no aerial photographs before ${PHOTO_FIRST}`
           : `latest aerial photographs as of ${Math.min(this.year, LAST_YEAR)}${this.year < 1960 ? " (few areas were flown yet)" : ""}`;
     }
+    const inv = this.inventories;
+    if (!inv.length) return { glaciers: "", backdrop };
+    const [a, b, t] = this.bracket();
+    const area = Math.round((inv[a].area + (inv[b].area - inv[a].area) * t) / 10) * 10;
+    const exact = t < 0.02 ? inv[a] : t > 0.98 ? inv[b] : null;
+    const glaciers = exact
+      ? `${exact.name}: ${exact.area} km² of glaciers`
+      : this.year > inv[inv.length - 1].year
+        ? `latest inventory, ${inv[inv.length - 1].year}: ${inv[inv.length - 1].area} km²`
+        : `between the ${inv[a].year} and ${inv[b].year} inventories, about ${area} km²`;
     return { glaciers, backdrop };
   }
 
-  private addLayers() {
+  private addBackdrop() {
+    if (this.backdropReady) return;
+    this.backdropReady = true;
     const map = this.map;
     map.addSource(MAPS, { type: "raster", tiles: [mapTiles(this.year)], tileSize: 256, maxzoom: 17, attribution: ATTRIBUTION });
     map.addLayer({ id: MAPS, type: "raster", source: MAPS, layout: { visibility: "none" }, paint: { "raster-fade-duration": 0 } }, this.before);
     map.addSource(PHOTOS, { type: "raster", tiles: [photoTiles(Math.max(this.year, PHOTO_FIRST))!], tileSize: 256, maxzoom: 18, attribution: ATTRIBUTION });
     map.addLayer({ id: PHOTOS, type: "raster", source: PHOTOS, layout: { visibility: "none" }, paint: { "raster-fade-duration": 0 } }, this.before);
+  }
+
+  private addLayers() {
+    const map = this.map;
+    this.addBackdrop(); // first, so that the glaciers lie on top
     map.addSource(GLACIERS, {
       type: "geojson",
       attribution: 'Glaciers: <a href="https://www.glamos.ch" target="_blank" rel="noopener">GLAMOS</a>',
@@ -172,37 +186,41 @@ export class RecentEra {
 
   private apply() {
     const map = this.map;
-    if (!this.data) return;
     const show = (id: string, on: boolean) => map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
 
-    // glaciers: the earlier inventory fades into the later one
-    const glaciers = this.on && this.showGlaciers;
-    const [a, b, t] = this.bracket();
-    // maps, photographs and the 3D ice show the ice themselves; beyond today only the outline stays, as a reference
-    const fill = this.year > LAST_YEAR ? 0 : this.backdrop === "none" && !this.solid ? 0.85 : 0.3;
-    [
-      [a, 1 - t],
-      [b, t],
-    ].forEach(([i, weight], k) => {
-      show(FILLS[k], glaciers);
-      show(LINES[k], glaciers);
-      if (!glaciers) return;
-      if (this.shown[k] !== i) {
-        this.shown[k] = i;
-        map.setFilter(FILLS[k], ["==", ["get", "i"], i]);
-        map.setFilter(LINES[k], ["==", ["get", "i"], i]);
-      }
-      map.setPaintProperty(FILLS[k], "fill-opacity", fill * weight);
-      map.setPaintProperty(LINES[k], "line-opacity", 0.9 * weight);
-    });
+    if (this.data) {
+      // glaciers: the earlier inventory fades into the later one
+      const glaciers = this.on && this.showGlaciers;
+      const [a, b, t] = this.bracket();
+      // maps, photographs and the 3D ice show the ice themselves; beyond today only the outline stays, as a reference
+      const fill = this.year > LAST_YEAR ? 0 : this.plain && !this.solid ? 0.85 : 0.3;
+      [
+        [a, 1 - t],
+        [b, t],
+      ].forEach(([i, weight], k) => {
+        show(FILLS[k], glaciers);
+        show(LINES[k], glaciers);
+        if (!glaciers) return;
+        if (this.shown[k] !== i) {
+          this.shown[k] = i;
+          map.setFilter(FILLS[k], ["==", ["get", "i"], i]);
+          map.setFilter(LINES[k], ["==", ["get", "i"], i]);
+        }
+        map.setPaintProperty(FILLS[k], "fill-opacity", fill * weight);
+        map.setPaintProperty(LINES[k], "line-opacity", 0.9 * weight);
+      });
+    }
 
-    // backdrop: swapping tiles on every step of a drag would flood the tile server
-    const maps = this.on && this.backdrop === "maps";
-    const photos = this.on && this.backdrop === "photos" && photoTiles(this.year) !== null;
-    show(MAPS, maps);
-    map.setPaintProperty(MAPS, "raster-opacity", this.backdropOpacity);
-    show(PHOTOS, photos);
-    map.setPaintProperty(PHOTOS, "raster-opacity", this.backdropOpacity);
+    // backdrop, in the ice age view as well; swapping tiles on every step of a drag would flood the tile server
+    const maps = this.backdrop === "maps";
+    const photos = this.backdrop === "photos" && photoTiles(this.year) !== null;
+    if (this.backdrop !== "none") this.addBackdrop();
+    if (this.backdropReady) {
+      show(MAPS, maps);
+      map.setPaintProperty(MAPS, "raster-opacity", this.backdropOpacity);
+      show(PHOTOS, photos);
+      map.setPaintProperty(PHOTOS, "raster-opacity", this.backdropOpacity);
+    }
     if ((maps || photos) && this.tileKey !== `${this.backdrop}:${this.year}`) {
       clearTimeout(this.tileTimer);
       this.tileTimer = window.setTimeout(() => this.retile(), 250);
@@ -212,7 +230,6 @@ export class RecentEra {
   }
 
   private retile() {
-    if (!this.on) return;
     const source = (id: string) => this.map.getSource(id) as RasterTileSource | undefined;
     if (this.backdrop === "maps") source(MAPS)?.setTiles([mapTiles(this.year)]);
     const photos = photoTiles(this.year);

@@ -21,7 +21,7 @@
             Other maps: the national map of Switzerland in its summer and winter editions
             (<a href="https://www.swisstopo.admin.ch" target="_blank" rel="noopener">swisstopo</a>, Switzerland only)
             and Esri World Imagery (worldwide). They show today's surface, lakes and glaciers included, also under the ice of the past.
-            In the view since 1850 the choice is between swisstopo's historic maps and aerial photographs of the chosen year.
+            The historic maps and aerial photographs of swisstopo follow the year of the view since 1850; in the ice age view they stay at the year last chosen there.
             Seabed from <a href="https://emodnet.ec.europa.eu/en/bathymetry" target="_blank" rel="noopener">EMODnet Bathymetry</a>
             around the Alps and coarser global terrain tiles elsewhere;
             the sea follows global mean sea level
@@ -30,25 +30,18 @@
           </p>
           <label class="range">Relief shading <input type="range" id="shading" min="0" max="1" step="0.05" value="0.55" /></label>
           <label><input type="checkbox" id="sea-visible" checked /> Sea, level <output id="sea-level">as today</output></label>
-          <label class="range" id="basemap-menu">Map
+          <label class="range">Map
             <select id="basemap">
               <option value="relief">Shaded relief</option>
               <option value="swiss">swisstopo map</option>
               <option value="swiss-winter">swisstopo winter map</option>
               <option value="imagery">Satellite imagery (Esri)</option>
+              <option value="maps">Historic maps (swisstopo)</option>
+              <option value="photos">Historic aerial photographs</option>
             </select>
           </label>
-          <div id="recent-backdrop-menu" hidden>
-            <label class="range">Map
-              <select id="recent-backdrop">
-                <option value="maps">Historic maps</option>
-                <option value="photos">Aerial photographs</option>
-                <option value="none">None</option>
-              </select>
-            </label>
-            <p class="note" id="recent-backdrop-note"></p>
-            <label class="range">Map opacity <input type="range" id="recent-opacity" min="0" max="1" step="0.05" value="1" /></label>
-          </div>
+          <p class="note" id="recent-backdrop-note"></p>
+          <label class="range" id="basemap-opacity-menu" hidden>Map opacity <input type="range" id="basemap-opacity" min="0" max="1" step="0.05" value="1" /></label>
         </fieldset>
         <fieldset>
           <legend>Labels</legend>
