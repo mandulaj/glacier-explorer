@@ -43,6 +43,18 @@ function yearToUrl(year: number | null) {
   }, 250);
 }
 
+/** Ice model in the URL: `m=swiss` for the 500 m model, absent for the default. */
+function modelFromUrl(): string | null {
+  const entry = location.hash.slice(1).split("&").find((part) => part.startsWith("m="));
+  return entry ? entry.slice(2) : null;
+}
+
+function modelToUrl(model: string) {
+  const parts = location.hash.slice(1).split("&").filter((part) => part && !part.startsWith("m="));
+  if (model !== "alps") parts.push(`m=${model}`);
+  history.replaceState(history.state, "", `#${parts.join("&")}`);
+}
+
 let urlTimer = 0;
 function ageToUrl(age: number) {
   clearTimeout(urlTimer);
@@ -97,6 +109,8 @@ async function main() {
   const modelSelect = document.getElementById("ice-model") as HTMLSelectElement;
   const modelNote = document.getElementById("ice-model-note")!;
   modelSelect.closest("label")!.hidden = !swiss;
+  if (swiss && modelFromUrl() === "swiss") modelSelect.value = "swiss";
+  modelSelect.addEventListener("change", () => modelToUrl(modelSelect.value));
   let swissHole: Uint8Array | null = null;
   let swissActive = false;
   const updateModel = (age: number) => {
