@@ -431,6 +431,7 @@ function bindRecent(map: maplibregl.Map, onSwitch: (on: boolean) => void): Recen
     el("timebar").hidden = on;
     el("recentbar").hidden = !on;
     el("recent-menu").hidden = !on;
+    el("recent-backdrop-menu").hidden = !on;
     el("ice-menu").hidden = on;
     // ice colouring and its legend belong to the ice age: set aside, and restored on the way back
     const mode = el<HTMLSelectElement>("ice-mode");

@@ -26,6 +26,17 @@
           </p>
           <label class="range">Relief shading <input type="range" id="shading" min="0" max="1" step="0.05" value="0.55" /></label>
           <label><input type="checkbox" id="sea-visible" checked /> Sea, level <output id="sea-level">as today</output></label>
+          <div id="recent-backdrop-menu" hidden>
+            <label class="range">Historic imagery
+              <select id="recent-backdrop">
+                <option value="maps">Historic maps</option>
+                <option value="photos">Aerial photographs</option>
+                <option value="none">None</option>
+              </select>
+            </label>
+            <p class="note" id="recent-backdrop-note"></p>
+            <label class="range">Imagery opacity <input type="range" id="recent-opacity" min="0" max="1" step="0.05" value="1" /></label>
+          </div>
         </fieldset>
         <fieldset>
           <legend>Labels</legend>
@@ -68,15 +79,6 @@
             </div>
             <button type="button" id="future-fly">Show the Aletsch area</button>
           </div>
-          <label class="range">Backdrop
-            <select id="recent-backdrop">
-              <option value="maps">Historic maps</option>
-              <option value="photos">Aerial photographs</option>
-              <option value="none">None</option>
-            </select>
-          </label>
-          <p class="note" id="recent-backdrop-note"></p>
-          <label class="range">Backdrop opacity <input type="range" id="recent-opacity" min="0" max="1" step="0.05" value="1" /></label>
         </fieldset>
         <fieldset id="ice-menu">
           <legend>Ice <button type="button" class="info" aria-expanded="false" aria-controls="info-ice" aria-label="About the ice data">i</button></legend>
